@@ -2,13 +2,16 @@
 
 # on_audio_query
 [![Pub.dev](https://img.shields.io/pub/v/on_audio_query?color=9cf&label=Pub.dev&style=flat-square)](https://pub.dev/packages/on_audio_query)
-[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20IOS%20%7C%20Web-9cf?&style=flat-square)]()
+[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Web-9cf?&style=flat-square)]()
 [![Languages](https://img.shields.io/badge/Languages-Dart%20%7C%20Kotlin%20%7C%20Swift-9cf?&style=flat-square)]()
 
-[Flutter](https://flutter.dev/) Plugin used to query audios/songs 🎶 infos [title, artist, album, etc..] from device storage. <br>
+A [Flutter](https://flutter.dev/) plugin for querying audio files and song metadata 🎶  
+Retrieve information like title, artist, album, and more directly from device storage.
 
-**Any problem? [Issues](https://github.com/LucJosin/on_audio_query/issues)** <br>
-**Any suggestion? [Pull request](https://github.com/LucJosin/on_audio_query/pulls)**
+This fork extends the original **on_audio_query** with custom changes and improvements aimed at simplifying development for **Sono**.
+
+**Found a bug?** [Open an issue](https://github.com/mathiiiiiis/on_audio_query/issues)  
+**Have an idea?** [Create a pull request](https://github.com/mathiiiiiis/on_audio_query/pulls)
 
 </div>
 
@@ -49,7 +52,7 @@
 ✔️ -> Supported <br>
 ❌ -> Not Supported <br>
 
-**[See all platforms methods support](https://github.com/LucJosin/on_audio_query/blob/main/on_audio_query/PLATFORMS.md)**
+**[See all platforms methods support](https://github.com/mathiiiiiis/on_audio_query/blob/main/on_audio_query/PLATFORMS.md)**
 
 ## Installation:
 
@@ -62,7 +65,7 @@ dependencies:
 ### Request Permission:
 
 #### Android:
-To use this plugin add the following code to your [AndroidManifest.xml](https://github.com/LucJosin/on_audio_query/blob/main/on_audio_query/example/android/app/src/main/AndroidManifest.xml)
+To use this plugin add the following code to your [AndroidManifest.xml](https://github.com/mathiiiiiis/on_audio_query/blob/main/on_audio_query/example/android/app/src/main/AndroidManifest.xml)
 ```xml
 <manifest>
   
@@ -79,7 +82,7 @@ To use this plugin add the following code to your [AndroidManifest.xml](https://
 ```
 
 #### IOS:
-To use this plugin add the following code to your [Info.plist](https://github.com/LucJosin/on_audio_query/blob/main/on_audio_query/example/ios/Runner/Info.plist)
+To use this plugin add the following code to your [Info.plist](https://github.com/mathiiiiiis/on_audio_query/blob/main/on_audio_query/example/ios/Runner/Info.plist)
 ```
 <dict>
 
@@ -189,6 +192,6 @@ Or you can use a basic and custom Widget.
 
 ## LICENSE:
 
-* [LICENSE](https://github.com/LucJosin/on_audio_query/blob/main/on_audio_query/LICENSE)
+* [LICENSE](https://github.com/mathiiiiiis/on_audio_query/blob/main/on_audio_query/LICENSE)
 
 > * [Back to top](#on_audio_query)
