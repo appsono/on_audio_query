@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.4] - 2026-01-20
+
+### Changed
+- **Artist separation system**: Better artist detection and handling of edge cases
+  - Added unescaped "/" and "&" as separators for better artist splitting
+  - Replaced pattern-based exceptions with exact-match-only approach to avoid false positives
+  - Implemented third-pass song querying to catch featured artists that MediaStore.Audio.Artists missed
+  - Split artist index now built during song metadata parsing for more complete artist detection
+  - Better track count accuracy by comparing MediaStore counts with song-based counting
+- Updated `on_audio_query_android` to v1.1.4
+
+### Technical Details
+- **Modified**: `ArtistSeparatorConfig.kt` - Expanded separator list and refined exception handling strategy
+- **Modified**: `ArtistQuery.kt` - Added direct song querying pass to discover missing artists from combined strings
+- Split artist detection now more comprehensive and accurate across all edge cases
+- 
 ## [2.9.3] - 2026-01-20
 
 ### Added
