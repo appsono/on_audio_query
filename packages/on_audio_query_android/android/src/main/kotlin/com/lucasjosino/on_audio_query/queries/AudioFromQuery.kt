@@ -4,9 +4,11 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.util.LruCache
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lucasjosino.on_audio_query.PluginProvider
+import com.lucasjosino.on_audio_query.consts.ArtistSeparatorConfig
 import com.lucasjosino.on_audio_query.controllers.PermissionController
 import com.lucasjosino.on_audio_query.queries.helper.QueryHelper
 import com.lucasjosino.on_audio_query.types.checkAudiosFromType
@@ -26,6 +28,9 @@ class AudioFromQuery : ViewModel() {
         private const val TAG = "OnAudiosFromQuery"
 
         private val URI: Uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+
+        //LRU cache for split artist song queries (50 most recent artists)
+        private val splitArtistSongsCache = LruCache<Long, ArrayList<MutableMap<String, Any?>>>(50)
     }
 
     //Main parameters
@@ -39,6 +44,10 @@ class AudioFromQuery : ViewModel() {
     private lateinit var sortType: String
     private lateinit var resolver: ContentResolver
 
+    // Split artist queries
+    private var isSplitArtistQuery = false
+    private var splitArtistName: String? = null
+
     /**
      * Method to "query" all songs from a specific item.
      */
@@ -47,6 +56,10 @@ class AudioFromQuery : ViewModel() {
         val result = PluginProvider.result()
         val context = PluginProvider.context()
         this.resolver = context.contentResolver
+
+        //Reset split artist state
+        isSplitArtistQuery = false
+        splitArtistName = null
 
         // The type of 'item':
         //   * 0 -> Album
@@ -89,15 +102,128 @@ class AudioFromQuery : ViewModel() {
             // 'whereVal' -> Album/Artist/Genre
             // 'where' -> uri
             whereVal = call.argument<Any>("where")!!.toString()
+
+            //Check if this is a split artist query (negative ID or artist name for type 3)
+            if (type == 3) {
+                val artistId = whereVal.toLongOrNull()
+                if (artistId != null && artistId < 0) {
+                    //This is a split artist with synthetic negative ID
+                    //We need to find the artist name and query by name instead
+                    isSplitArtistQuery = true
+                    //Query all songs and filter
+                    viewModelScope.launch {
+                        val resultSongList = loadSongsForSplitArtist(artistId)
+                        result.success(resultSongList)
+                    }
+                    return
+                }
+            }
+
             where = checkAudiosFromType(type)
 
-            // Query everything in background for a better performance.
+            //Query everything in background
             viewModelScope.launch {
                 val resultSongList = loadSongsFrom()
                 result.success(resultSongList)
             }
         }
     }
+
+    
+    // Load songs for a split artist using index-based lookup.
+    //
+    // This method:
+    // 1. Checks the LRU cache first for fast repeated access
+    // 2. Uses the artist ID-to-name mapping to get the artist name
+    // 3. Uses the split artist index to find all combined artist strings
+    // 4. Queries MediaStore with targeted WHERE clauses (no full table scan)
+    // 5. Caches the result for future queries
+    private suspend fun loadSongsForSplitArtist(splitArtistId: Long): ArrayList<MutableMap<String, Any?>> =
+        withContext(Dispatchers.IO) {
+            //Check cache first
+            splitArtistSongsCache.get(splitArtistId)?.let {
+                Log.d(TAG, "Cache hit for split artist ID: $splitArtistId")
+                return@withContext it
+            }
+
+            //Get artist name from ID mapping
+            val artistName = ArtistSeparatorConfig.getArtistNameById(splitArtistId)
+            if (artistName == null) {
+                Log.w(TAG, "Could not find artist name for split artist ID: $splitArtistId")
+                return@withContext ArrayList()
+            }
+
+            Log.d(TAG, "Loading songs for split artist: $artistName (ID: $splitArtistId)")
+
+            //Get all combined artist strings that contain this artist
+            val combinedArtists = ArtistSeparatorConfig.getCombinedArtistsFor(artistName)
+
+            val songsFromList: ArrayList<MutableMap<String, Any?>> = ArrayList()
+            val seenSongIds = mutableSetOf<Long>()
+
+            if (combinedArtists.isEmpty()) {
+                //This artist exists as a standalone entry => query by exact match
+                val cursor = resolver.query(
+                    URI,
+                    songProjection(),
+                    "${MediaStore.Audio.Media.ARTIST}=?",
+                    arrayOf(artistName),
+                    sortType
+                )
+
+                while (cursor != null && cursor.moveToNext()) {
+                    val tempData: MutableMap<String, Any?> = HashMap()
+                    for (audioMedia in cursor.columnNames) {
+                        tempData[audioMedia] = helper.loadSongItem(audioMedia, cursor)
+                    }
+
+                    val songId = (tempData["_id"] as? Number)?.toLong()
+                    if (songId != null && !seenSongIds.contains(songId)) {
+                        seenSongIds.add(songId)
+                        val tempExtraData = helper.loadSongExtraInfo(URI, tempData)
+                        tempData.putAll(tempExtraData)
+                        songsFromList.add(tempData)
+                    }
+                }
+
+                cursor?.close()
+            } else {
+                //Query songs for each combined artist string
+                for (combinedArtist in combinedArtists) {
+                    val cursor = resolver.query(
+                        URI,
+                        songProjection(),
+                        "${MediaStore.Audio.Media.ARTIST}=?",
+                        arrayOf(combinedArtist),
+                        sortType
+                    )
+
+                    while (cursor != null && cursor.moveToNext()) {
+                        val tempData: MutableMap<String, Any?> = HashMap()
+                        for (audioMedia in cursor.columnNames) {
+                            tempData[audioMedia] = helper.loadSongItem(audioMedia, cursor)
+                        }
+
+                        val songId = (tempData["_id"] as? Number)?.toLong()
+                        if (songId != null && !seenSongIds.contains(songId)) {
+                            seenSongIds.add(songId)
+                            val tempExtraData = helper.loadSongExtraInfo(URI, tempData)
+                            tempData.putAll(tempExtraData)
+                            songsFromList.add(tempData)
+                        }
+                    }
+
+                    cursor?.close()
+                }
+            }
+
+            Log.d(TAG, "Found ${songsFromList.size} songs for split artist: $artistName")
+
+            //Cache result
+            splitArtistSongsCache.put(splitArtistId, songsFromList)
+
+            return@withContext songsFromList
+        }
 
     //Loading in Background
     private suspend fun loadSongsFrom(): ArrayList<MutableMap<String, Any?>> =

@@ -1,0 +1,168 @@
+package com.lucasjosino.on_audio_query.consts
+
+import java.util.concurrent.ConcurrentHashMap
+
+// This object provides shared constants and methods for splitting combined artist strings
+// (e.g. "Artist A, Artist B") into individual artists
+object ArtistSeparatorConfig {
+
+    val SEPARATORS = listOf(
+        " feat. ",
+        " ft. ",
+        " featuring ",
+        " / ",
+        ", ",
+        " & ",
+        " and ",
+        " x ",
+        " X ",
+    )
+
+    // Pattern-based exceptions for detecting band names that contain separators
+    // but should NOT be split
+    private val EXCEPTION_PATTERNS = listOf(
+        Regex("^.+, the .+$", RegexOption.IGNORE_CASE),
+        Regex("^.+ & the .+$", RegexOption.IGNORE_CASE),
+        Regex("^.+ and the .+$", RegexOption.IGNORE_CASE),
+    )
+
+    // Exact-match exceptions for well-known band names/groups that dont match patterns
+    // but should not be split
+    private val EXACT_EXCEPTIONS = setOf(
+        "simon & garfunkel",
+        "hall & oates",
+        "earth, wind & fire",
+        "emerson, lake & palmer",
+        "crosby, stills, nash & young",
+        "peter, paul and mary",
+        "blood, sweat & tears",
+        "up, bustle and out",
+        "me first and the gimme gimmes",
+        "hootie & the blowfish",
+        "katrina and the waves",
+        "kc and the sunshine band",
+        "martha and the vandellas",
+        "gladys knight & the pips",
+        "bob seger & the silver bullet band",
+        "huey lewis and the news",
+        "kid cudi & eminem",
+        "ja rule and ashanti",
+        "run-dmc and aerosmith",
+        "florida, feat. kesha",
+        "kanye west and jay-z",
+        "kanye west & jay-z",
+        "the black eyed peas and justin timberlake",
+    )
+
+    // Index mapping split artist names to the combined artist strings they appear in
+    // Example: "artist a" -> ["Artist A, Artist B", "Artist A & Artist C"]
+    private val splitArtistIndex = ConcurrentHashMap<String, MutableSet<String>>()
+
+    // Index mapping split artist IDs to their display names
+    // Key: split artist ID (negative number)
+    // Value: artist display name
+    private val idToNameMap = ConcurrentHashMap<Long, String>()
+
+    // Checks if an artist name should be treated as an exception and NOT split
+    fun isExceptionArtist(artistString: String): Boolean {
+        val lower = artistString.lowercase()
+
+        //Check exact matches first
+        if (EXACT_EXCEPTIONS.contains(lower)) return true
+
+        //Check pattern matches
+        return EXCEPTION_PATTERNS.any { it.matches(artistString) }
+    }
+
+
+    // This method,
+    // 1. Checks if artist is an exception => returns unsplit if so
+    // 2. Builds a regex from all seperators
+    // 3. Splits on any(!) matching seperators => handles multiple seperator types
+    // 4. Trims and filters emptry results
+    //
+    // Example: "Artist A, Artist B" => ["Artist A", "Artist B"]
+    fun splitArtistString(artistString: String): List<String> {
+        //Check exceptions first
+        if (isExceptionArtist(artistString)) return listOf(artistString)
+
+        //Build combined regex pattern from all separators
+        //(Regex.escape ensures special characters in separators are treated literally)
+        val pattern = SEPARATORS.joinToString("|") { Regex.escape(it) }
+        val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+
+        //Split by any separator => trim whitespace => filter empty strings
+        val parts = artistString.split(regex)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        // Only return split if we actually got multiple parts
+        return if (parts.size > 1) parts else listOf(artistString)
+    }
+
+    // Generates a deterministic, stable ID for a split Artist
+    // ID is,
+    // - Negative => to distinguish from MediaStore IDS
+    // - Deterministic => same njame always produces same ID
+    // 
+    // @param artistName => The artist name (duh)
+    // @return => A negative Long ID
+    fun generateSplitArtistId(artistName: String): Long {
+        //Normalize to lowercase and trim for consistency
+        val normalized = artistName.trim().lowercase()
+        val hash = normalized.hashCode().toLong()
+
+        //Ensure negative to distinguish from MediaStore IDs
+        //Use bitwise AND to keep within valid range
+        return -(hash.and(0x7FFFFFFF))
+    }
+
+    // Adds an artist to the split artist index
+    //
+    // @param splitArtistName => Individual artist name (lowecase for key)
+    // @param combinedArtistString => Original combined string from MediaStore
+    fun addToIndex(splitArtistName: String, combinedArtistString: String) {
+        val key = splitArtistName.lowercase()
+        splitArtistIndex.getOrPut(key) { mutableSetOf() }.add(combinedArtistString)
+    }
+
+    // Gets all combined artist strings that contain a given artist
+    //
+    // @param artistName => The individuel artist name to look up
+    // @return => Set of combined artist string (or empty set if not found)
+    fun getCombinedArtistsFor(artistName: String): Set<String> {
+        val key = artistName.lowercase()
+        return splitArtistIndex[key]?.toSet() ?: emptySet()
+    }
+
+    // Adds an ID-to-name mapping for a split artist
+    //
+    // @param artistID => The split artist ID (negative: explained further above)
+    // @param artistName => The split artist name (duh)
+    fun addIdMapping(artistId: Long, artistName: String) {
+        idToNameMap[artistId] = artistName
+    }
+
+    // Gets the artist name for a given split artist ID
+    //
+    // @param artistId => The split artist ID
+    // @return => The artist name (or null if not found)
+    fun getArtistNameById(artistId: Long): String? {
+        return idToNameMap[artistId]
+    }
+
+    // Clears all index data
+    // => Should be called when reloading artist list
+    fun clearIndex() {
+        splitArtistIndex.clear()
+        idToNameMap.clear()
+    }
+
+    // Checks if an artist ID represents a split artist (negative ID: explained further above)
+    //
+    // @param artistId => The artist ID to check
+    // @return true: if is a split artist; false: not a split artist
+    fun isSplitArtistId(artistId: Long): Boolean {
+        return artistId < 0
+    }
+}
