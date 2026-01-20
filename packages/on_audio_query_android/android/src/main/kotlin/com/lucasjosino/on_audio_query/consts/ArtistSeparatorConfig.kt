@@ -11,8 +11,10 @@ object ArtistSeparatorConfig {
         " ft. ",
         " featuring ",
         " / ",
+        "/",
         ", ",
         " & ",
+        "&",
         " and ",
         " x ",
         " X ",
@@ -20,10 +22,10 @@ object ArtistSeparatorConfig {
 
     // Pattern-based exceptions for detecting band names that contain separators
     // but should NOT be split
-    private val EXCEPTION_PATTERNS = listOf(
-        Regex("^.+, the .+$", RegexOption.IGNORE_CASE),
-        Regex("^.+ & the .+$", RegexOption.IGNORE_CASE),
-        Regex("^.+ and the .+$", RegexOption.IGNORE_CASE),
+    // Only use very specific patterns to avoid false positives!
+    // For individual artist names like "Tyler, The Creator", use EXACT_EXCEPTIONS instead.
+    private val EXCEPTION_PATTERNS = listOf<Regex>(
+        //Use exact matches only to avoid false positives
     )
 
     // Exact-match exceptions for well-known band names/groups that dont match patterns
@@ -45,13 +47,22 @@ object ArtistSeparatorConfig {
         "gladys knight & the pips",
         "bob seger & the silver bullet band",
         "huey lewis and the news",
-        "kid cudi & eminem",
-        "ja rule and ashanti",
-        "run-dmc and aerosmith",
-        "florida, feat. kesha",
-        "kanye west and jay-z",
-        "kanye west & jay-z",
-        "the black eyed peas and justin timberlake",
+        "echo & the bunnymen",
+        "tom petty and the heartbreakers",
+        "bob marley & the wailers",
+        "sly & the family stone",
+        "bruce springsteen & the e street band",
+        "diana ross & the supremes",
+        "smokey robinson & the miracles",
+        "joan jett & the blackhearts",
+        "prince & the revolution",
+        "derek & the dominos",
+        "sergio mendes & brasil '66",
+
+        "tyler, the creator",
+        "panic! at the disco",
+        "florence + the machine",
+        "florence and the machine",
     )
 
     // Index mapping split artist names to the combined artist strings they appear in

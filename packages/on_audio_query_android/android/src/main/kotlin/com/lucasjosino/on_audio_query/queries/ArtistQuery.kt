@@ -156,6 +156,74 @@ class ArtistQuery : ViewModel() {
 
             Log.d(TAG, "Split artist count: ${seenArtists.size} (from ${rawArtists.size} raw entries)")
 
+            // Third pass: Query songs to find artists that MediaStore.Audio.Artists missed
+            // This catches featured artists that only appear in combined strings
+            val songsUri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val songCursor = resolver.query(
+                songsUri,
+                arrayOf(
+                    android.provider.MediaStore.Audio.Media.ARTIST,
+                    android.provider.MediaStore.Audio.Media._ID
+                ),
+                null,
+                null,
+                null
+            )
+
+            val artistSongCounts = mutableMapOf<String, Int>()
+
+            while (songCursor != null && songCursor.moveToNext()) {
+                val artistString = songCursor.getString(0) ?: continue
+                val splitArtists = ArtistSeparatorConfig.splitArtistString(artistString)
+
+                //Build split artist index for combined strings
+                if (splitArtists.size > 1) {
+                    for (artistName in splitArtists) {
+                        ArtistSeparatorConfig.addToIndex(artistName, artistString)
+                    }
+                }
+
+                for (artistName in splitArtists) {
+                    val artistKey = artistName.lowercase()
+                    artistSongCounts[artistKey] = (artistSongCounts[artistKey] ?: 0) + 1
+
+                    //If this artist doesnt exist in seenArtists yet => add them
+                    if (!seenArtists.containsKey(artistKey)) {
+                        val artistId = mediaStoreIdLookup[artistKey]
+                            ?: ArtistSeparatorConfig.generateSplitArtistId(artistName)
+
+                        val newArtist: MutableMap<String, Any?> = HashMap()
+                        newArtist["_id"] = artistId
+                        newArtist["artist"] = artistName
+                        newArtist["number_of_albums"] = 0 //Will be calculated below
+                        newArtist["number_of_tracks"] = 0 //Will be set from artistSongCounts
+
+                        //Add ID mapping for split artists
+                        if (artistId is Long && artistId < 0) {
+                            ArtistSeparatorConfig.addIdMapping(artistId, artistName)
+                        }
+
+                        seenArtists[artistKey] = newArtist
+                        Log.d(TAG, "Added missing artist from songs: $artistName")
+                    }
+                }
+            }
+
+            songCursor?.close()
+
+            //Update track counts from song-based counting
+            for ((artistKey, count) in artistSongCounts) {
+                seenArtists[artistKey]?.let { artist ->
+                    //Use the higher count (either from MediaStore or from song counting)
+                    val currentCount = artist["number_of_tracks"] as? Int ?: 0
+                    if (count > currentCount) {
+                        artist["number_of_tracks"] = count
+                    }
+                }
+            }
+
+            Log.d(TAG, "Final artist count: ${seenArtists.size} (added ${seenArtists.size - rawArtists.size} from song metadata)")
+
             return@withContext ArrayList(seenArtists.values)
         }
 }
