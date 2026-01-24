@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.4] - 2026-01-24
+
+### Fixed
+- **DISC_NUMBER column crash**: Fixed SQLite crash on Android 9 (API 28) and earlier devices
+  - `disc_number` column doesn't exist in MediaStore before API 29
+  - Query now conditionally includes the column only on supported Android versions
+
+### Changed
+- Updated `on_audio_query_android` to v1.1.5
+
+### Technical Details
+- **Modified**: `CursorProjection.kt` - Moved `MediaStore.Audio.Media.DISC_NUMBER` from unconditional projection to `Build.VERSION.SDK_INT >= 29` conditional block
+
 ## [2.9.4] - 2026-01-20
 
 ### Changed
