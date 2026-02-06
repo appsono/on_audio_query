@@ -86,16 +86,38 @@ object ArtistSeparatorConfig {
     }
 
 
-    // This method,
-    // 1. Checks if artist is an exception => returns unsplit if so
-    // 2. Builds a regex from all seperators
-    // 3. Splits on any(!) matching seperators => handles multiple seperator types
-    // 4. Trims and filters emptry results
+    // This method uses smart splitting to protect exception artists within combined strings
+    // 1. Checks if entire string is an exception => returns unsplit if so
+    // 2. Replaces exception artists with placeholders to protect them
+    // 3. Builds a regex from all separators
+    // 4. Splits on any(!) matching separators => handles multiple separator types
+    // 5. Restores placeholders with original exception artist names
     //
     // Example: "Artist A, Artist B" => ["Artist A", "Artist B"]
+    // Example: "Tyler, The Creator, Frank Ocean" => ["Tyler, The Creator", "Frank Ocean"]
     fun splitArtistString(artistString: String): List<String> {
-        //Check exceptions first
+        //Check if entire string is an exception first
         if (isExceptionArtist(artistString)) return listOf(artistString)
+
+        //Smart splitting: protect exception artists within combined strings
+        //Replace exception artists with placeholders before splitting
+        var workingString = artistString
+        val placeholders = mutableMapOf<String, String>()
+        var placeholderIndex = 0
+
+        //Sort exceptions by length (longest first) to avoid partial matches
+        val sortedExceptions = EXACT_EXCEPTIONS.sortedByDescending { it.length }
+
+        for (exception in sortedExceptions) {
+            //Case-insensitive search for exception within the string
+            val regex = Regex(Regex.escape(exception), RegexOption.IGNORE_CASE)
+            val match = regex.find(workingString)
+            if (match != null) {
+                val placeholder = "___ARTIST_PLACEHOLDER_${placeholderIndex++}___"
+                placeholders[placeholder] = match.value
+                workingString = workingString.replaceFirst(regex, placeholder)
+            }
+        }
 
         //Build combined regex pattern from all separators
         //(Regex.escape ensures special characters in separators are treated literally)
@@ -103,9 +125,18 @@ object ArtistSeparatorConfig {
         val regex = Regex(pattern, RegexOption.IGNORE_CASE)
 
         //Split by any separator => trim whitespace => filter empty strings
-        val parts = artistString.split(regex)
+        var parts = workingString.split(regex)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+
+        //Restore placeholders with original exception artist names
+        parts = parts.map { part ->
+            var result = part
+            placeholders.forEach { (placeholder, original) ->
+                result = result.replace(placeholder, original)
+            }
+            result.trim()
+        }
 
         // Only return split if we actually got multiple parts
         return if (parts.size > 1) parts else listOf(artistString)
