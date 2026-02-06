@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.6] - 2026-02-06
+
+### Fixed
+- **Artist separation with exception artists**: Fixed incorrect splitting of exception artists within combined strings
+  - Exception artists (e.g., "Tyler, The Creator") are now protected when appearing in combined strings
+  - Implemented placeholder mechanism to preserve exception artists during split operation
+  - Sorts exceptions by length (longest first) to avoid partial matches
+  - Example: "Tyler, The Creator, Frank Ocean" now correctly splits to ["Tyler, The Creator", "Frank Ocean"]
+
+### Changed
+- Updated `on_audio_query_android` to v1.1.6
+
+### Technical Details
+- **Modified**: `ArtistSeparatorConfig.kt` - Added smart splitting with placeholder protection for exception artists
+- Exception artists are temporarily replaced with placeholders before splitting, then restored afterward
+- Case-insensitive matching for better exception detection
+
 ## [2.9.5] - 2026-01-24
 
 ### Fixed
