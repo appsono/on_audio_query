@@ -33,6 +33,8 @@ dependencies:
     path: ../on_audio_query_ios
   on_audio_query_android:
     path: ../on_audio_query_android
+  on_audio_query_linux:
+    path: ../on_audio_query_linux
 
   # Flutter
   flutter:
@@ -56,3 +58,5 @@ flutter:
         default_package: on_audio_query_ios
       web:
         default_package: on_audio_query_web
+      linux:
+        default_package: on_audio_query_linux

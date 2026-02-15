@@ -1,0 +1,38 @@
+# ========
+# author: Mathis Laarmanns
+# github: https://github.com/mathiiiiiis
+# website: https://mathiiis.de/
+# ========
+name: on_audio_query_linux
+description: Linux implementation of the on_audio_query plugin.
+version: 1.0.0
+publish_to: none
+homepage: https://github.com/appsono/on_audio_query/tree/main/packages/on_audio_query_linux
+# pub.dev: https://pub.dev/packages/on_audio_query
+# pub.dev (Linux): https://pub.dev/packages/on_audio_query_linux
+
+environment:
+  sdk: ">=2.17.0 <4.0.0"
+  flutter: ">=2.5.0"
+
+dependencies:
+  # on_audio_query
+  on_audio_query_platform_interface:
+    path: ../on_audio_query_platform_interface
+
+  # Flutter
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  # Flutter
+  flutter_lints: ^2.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    implements: on_audio_query
+    platforms:
+      linux:
+        pluginClass: OnAudioQueryLinuxPlugin

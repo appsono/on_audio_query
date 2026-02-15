@@ -18,7 +18,7 @@ class AlbumModel {
   int? get artistId => _info["artist_id"];
 
   /// Return album [numOfSongs]
-  int get numOfSongs => _info["numsongs"];
+  int get numOfSongs => _info["numsongs"] ?? 0;
 
   /// Return a map with all [keys] and [values] from specific album.
   Map get getMap => _info;
