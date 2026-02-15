@@ -59,6 +59,7 @@ add_library(${PLUGIN_NAME} SHARED
 
   # Utils
   "src/utils/string_utils.cc"
+  "src/utils/artist_separator.cc"
 )
 
 # Apply Flutter plugin settings
