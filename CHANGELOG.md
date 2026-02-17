@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.7] - 2026-02-17
+
+### Added
+- **Linux platform support**: Full native Linux implementation using C++ with FFmpeg/ffprobe
+  - SQLite-backed metadata database with incremental scanning
+  - Multi-threaded file scanning with thread pool for parallel metadata extraction
+  - LRU caching for frequently accessed queries
+  - Supports all query types: songs, albums, artists, genres, playlists, folders, and artwork
+  - Artist separation system ported to Linux with full split artist handling
+  - Split artists integrated into database queries and updates for consistent behavior
+
+### Changed
+- Added `on_audio_query_linux` v1.0.0
+
+### Technical Details
+- **New package**: `on_audio_query_linux` - Complete Linux platform implementation
+- **Key components**: `DatabaseManager` (SQLite), `FfprobeExtractor` (metadata), `ScanCoordinator` (incremental scanning), `ThreadPool` (concurrency)
+- **Artist splitting**: `ArtistSeparator` class with same separator/exception logic as Android, integrated into `DatabaseManager` for split artist persistence
+- **Performance**: Index-based lookups and LRU cache for split artist queries
+
 ## [2.9.6] - 2026-02-06
 
 ### Fixed
