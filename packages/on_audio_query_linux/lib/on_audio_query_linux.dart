@@ -15,7 +15,7 @@ Copyright: © 2021, Lucas Josino. All rights reserved. © 2026, Mathis Laarmanns
 
 library on_audio_query_linux;
 
-import '../../on_audio_query_platform_interface/lib/on_audio_query_platform_interface.dart';
+import 'package:on_audio_query_platform_interface/on_audio_query_platform_interface.dart';
 
 /// Linux implementation of the on_audio_query plugin.
 ///
