@@ -155,6 +155,10 @@ class DatabaseManager {
   ArtistData ExtractArtistFromStatement(sqlite3_stmt* stmt);
   GenreData ExtractGenreFromStatement(sqlite3_stmt* stmt);
   PlaylistData ExtractPlaylistFromStatement(sqlite3_stmt* stmt);
+
+  /// Split artist query helpers
+  std::vector<AlbumData> QueryAlbumsForSplitArtist(int64_t split_artist_id, const QueryParams& params);
+  void UpdateArtistsWithSplitting();
 };
 
 }  // namespace on_audio_query_linux

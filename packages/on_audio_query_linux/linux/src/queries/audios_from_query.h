@@ -13,6 +13,8 @@ class AudiosFromQuery : public BaseQuery {
   FlValue* Execute() override;
 
  private:
+  FlValue* ExecuteSplitArtistQuery();
+
   int64_t id_;
   int type_;  //artist, album, genre
 };

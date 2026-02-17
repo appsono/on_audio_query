@@ -77,11 +77,47 @@ static void on_audio_query_linux_plugin_handle_method_call(
   }
   // Query methods
   else if (strcmp(method, "querySongs") == 0) {
-    AudioQuery query(self->db_manager);
+    FlValue* args = fl_method_call_get_args(method_call);
+    QueryParams params;
+
+    if (args && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+      FlValue* sort_type_val = fl_value_lookup_string(args, "sortType");
+      FlValue* order_type_val = fl_value_lookup_string(args, "orderType");
+
+      if (sort_type_val) {
+        int sort_type = fl_value_get_int(sort_type_val);
+        params.sort_type = static_cast<QueryParams::SortType>(sort_type);
+      }
+
+      if (order_type_val) {
+        int order_type = fl_value_get_int(order_type_val);
+        params.order_type = static_cast<QueryParams::OrderType>(order_type);
+      }
+    }
+
+    AudioQuery query(self->db_manager, params);
     FlValue* result = query.Execute();
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   } else if (strcmp(method, "queryAlbums") == 0) {
-    AlbumQuery query(self->db_manager);
+    FlValue* args = fl_method_call_get_args(method_call);
+    QueryParams params;
+
+    if (args && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+      FlValue* artist_id_val = fl_value_lookup_string(args, "artistId");
+      FlValue* order_type_val = fl_value_lookup_string(args, "orderType");
+
+      if (artist_id_val && fl_value_get_type(artist_id_val) == FL_VALUE_TYPE_INT) {
+        int64_t artist_id = fl_value_get_int(artist_id_val);
+        params.artist_filter = artist_id;
+      }
+
+      if (order_type_val && fl_value_get_type(order_type_val) == FL_VALUE_TYPE_INT) {
+        int order_type = fl_value_get_int(order_type_val);
+        params.order_type = static_cast<QueryParams::OrderType>(order_type);
+      }
+    }
+
+    AlbumQuery query(self->db_manager, params);
     FlValue* result = query.Execute();
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   } else if (strcmp(method, "queryArtists") == 0) {

@@ -1,5 +1,6 @@
 #include "database_manager.h"
 #include "../utils/string_utils.h"
+#include "../utils/artist_separator.h"
 #include <iostream>
 #include <sstream>
 #include <filesystem>
@@ -450,8 +451,19 @@ std::vector<std::string> DatabaseManager::GetAllSongPaths() {
 std::vector<AlbumData> DatabaseManager::QueryAlbums(const QueryParams& params) {
   std::lock_guard<std::mutex> lock(db_mutex_);
 
+  //Check if this is a split artist filter (negative ID)
+  if (params.artist_filter.has_value() && params.artist_filter.value() < 0) {
+    return QueryAlbumsForSplitArtist(params.artist_filter.value(), params);
+  }
+
   std::ostringstream query;
   query << "SELECT id, album, artist, artist_id, num_of_songs, first_year, last_year FROM albums";
+
+  //Add WHERE clause for artist filter
+  if (params.artist_filter.has_value()) {
+    query << " WHERE artist_id = " << params.artist_filter.value();
+  }
+
   query << " ORDER BY album COLLATE NOCASE ";
   query << (params.order_type == QueryParams::OrderType::ASC ? "ASC" : "DESC");
 
@@ -920,18 +932,6 @@ void DatabaseManager::UpdateAggregatedTables() {
     GROUP BY album_id
   )";
 
-  //update artists
-  const char* artists_sql = R"(
-    INSERT OR REPLACE INTO artists (id, artist, number_of_albums, number_of_tracks)
-    SELECT
-      artist_id,
-      artist,
-      COUNT(DISTINCT album_id) as number_of_albums,
-      COUNT(*) as number_of_tracks
-    FROM songs
-    GROUP BY artist_id
-  )";
-
   //update genres
   const char* genres_sql = R"(
     INSERT OR REPLACE INTO genres (id, name, num_of_songs)
@@ -944,8 +944,10 @@ void DatabaseManager::UpdateAggregatedTables() {
   )";
 
   sqlite3_exec(db_, albums_sql, nullptr, nullptr, nullptr);
-  sqlite3_exec(db_, artists_sql, nullptr, nullptr, nullptr);
   sqlite3_exec(db_, genres_sql, nullptr, nullptr, nullptr);
+
+  //update artists with splitting
+  UpdateArtistsWithSplitting();
 }
 
 /// Utility
@@ -1088,6 +1090,213 @@ PlaylistData DatabaseManager::ExtractPlaylistFromStatement(sqlite3_stmt* stmt) {
   playlist.num_of_songs = sqlite3_column_int(stmt, 5);
 
   return playlist;
+}
+
+std::vector<AlbumData> DatabaseManager::QueryAlbumsForSplitArtist(int64_t split_artist_id, const QueryParams& params) {
+  //This method queries albums for a split artist (negative ID)
+  //Strategy: Find all songs by this split artist, extract unique album_ids, then query those albums
+
+  auto& separator = ArtistSeparator::Instance();
+
+  //Get artist name from ID mapping
+  std::string artist_name = separator.GetArtistNameById(split_artist_id);
+  if (artist_name.empty()) {
+    std::cerr << "[DatabaseManager] Could not find artist name for split artist ID: " << split_artist_id << std::endl;
+    return {};
+  }
+
+  std::cout << "[DatabaseManager] Querying albums for split artist: " << artist_name
+            << " (ID: " << split_artist_id << ")" << std::endl;
+
+  //Get all combined artist strings that contain this artist
+  auto combined_artists = separator.GetCombinedArtistsFor(artist_name);
+
+  //Collect unique album IDs from songs by this artist
+  std::set<int64_t> album_ids;
+
+  if (combined_artists.empty()) {
+    //Query songs where artist matches exactly
+    const char* sql = "SELECT DISTINCT album_id FROM songs WHERE artist = ?";
+    sqlite3_stmt* stmt = GetPreparedStatement(sql);
+    if (stmt) {
+      sqlite3_bind_text(stmt, 1, artist_name.c_str(), -1, SQLITE_TRANSIENT);
+      while (sqlite3_step(stmt) == SQLITE_ROW) {
+        album_ids.insert(sqlite3_column_int64(stmt, 0));
+      }
+      sqlite3_reset(stmt);
+    }
+  } else {
+    //Query songs for each combined artist string
+    const char* sql = "SELECT DISTINCT album_id FROM songs WHERE artist = ?";
+    sqlite3_stmt* stmt = GetPreparedStatement(sql);
+    if (stmt) {
+      for (const auto& combined_artist : combined_artists) {
+        sqlite3_bind_text(stmt, 1, combined_artist.c_str(), -1, SQLITE_TRANSIENT);
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+          album_ids.insert(sqlite3_column_int64(stmt, 0));
+        }
+        sqlite3_reset(stmt);
+      }
+    }
+  }
+
+  if (album_ids.empty()) {
+    return {};
+  }
+
+  //Query albums by collected album_ids
+  std::vector<AlbumData> results;
+  for (int64_t album_id : album_ids) {
+    auto album = GetAlbumById(album_id);
+    if (album.has_value()) {
+      results.push_back(album.value());
+    }
+  }
+
+  //Sort results
+  std::sort(results.begin(), results.end(),
+            [&params](const AlbumData& a, const AlbumData& b) {
+              bool ascending = (params.order_type == QueryParams::OrderType::ASC);
+              int cmp = strcasecmp(a.album.c_str(), b.album.c_str());
+              return ascending ? (cmp < 0) : (cmp > 0);
+            });
+
+  std::cout << "[DatabaseManager] Found " << results.size() << " albums for split artist: " << artist_name << std::endl;
+
+  return results;
+}
+
+void DatabaseManager::UpdateArtistsWithSplitting() {
+  std::cout << "[DatabaseManager] Updating artists table with artist splitting..." << std::endl;
+
+  auto& separator = ArtistSeparator::Instance();
+  separator.ClearIndex();
+
+  //Clear artists table
+  sqlite3_exec(db_, "DELETE FROM artists", nullptr, nullptr, nullptr);
+
+  //Get all unique artists from songs with their metadata
+  const char* query_sql = R"(
+    SELECT
+      artist_id,
+      artist,
+      COUNT(DISTINCT album_id) as number_of_albums,
+      COUNT(*) as number_of_tracks
+    FROM songs
+    GROUP BY artist_id
+  )";
+
+  sqlite3_stmt* stmt;
+  if (sqlite3_prepare_v2(db_, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    std::cerr << "[DatabaseManager] Failed to query artists: " << sqlite3_errmsg(db_) << std::endl;
+    return;
+  }
+
+  //Build MediaStore ID lookup for single (non-combined) artists
+  std::map<std::string, int64_t> mediastore_id_lookup;
+  std::vector<ArtistData> raw_artists;
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    ArtistData artist;
+    artist.id = sqlite3_column_int64(stmt, 0);
+    artist.artist = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+    artist.number_of_albums = sqlite3_column_int(stmt, 2);
+    artist.number_of_tracks = sqlite3_column_int(stmt, 3);
+
+    raw_artists.push_back(artist);
+
+    //Check if this is a single artist (not combined)
+    auto split_check = separator.SplitArtistString(artist.artist);
+    if (split_check.size() == 1) {
+      std::string artist_lower = artist.artist;
+      std::transform(artist_lower.begin(), artist_lower.end(), artist_lower.begin(), ::tolower);
+      mediastore_id_lookup[artist_lower] = artist.id;
+    }
+  }
+
+  sqlite3_finalize(stmt);
+
+  //Map to track seen artists (key = lowercase artist name)
+  std::map<std::string, ArtistData> seen_artists;
+
+  //Process each raw artist
+  for (const auto& artist_data : raw_artists) {
+    auto split_artists = separator.SplitArtistString(artist_data.artist);
+    int64_t original_id = artist_data.id;
+    int num_albums = artist_data.number_of_albums;
+    int num_tracks = artist_data.number_of_tracks;
+
+    //Build split artist index if this is a combined artist
+    if (split_artists.size() > 1) {
+      for (const auto& artist_name : split_artists) {
+        separator.AddToIndex(artist_name, artist_data.artist);
+      }
+    }
+
+    //Process each split artist
+    for (const auto& artist_name : split_artists) {
+      std::string artist_key = artist_name;
+      std::transform(artist_key.begin(), artist_key.end(), artist_key.begin(), ::tolower);
+
+      if (seen_artists.find(artist_key) != seen_artists.end()) {
+        //Artist already exists => merge counts
+        auto& existing_artist = seen_artists[artist_key];
+        existing_artist.number_of_albums += num_albums;
+        existing_artist.number_of_tracks += num_tracks;
+      } else {
+        //New artist => create entry
+        ArtistData split_data;
+        split_data.artist = artist_name;
+
+        //Determine ID: use MediaStore ID if available, otherwise generate
+        int64_t artist_id;
+        if (mediastore_id_lookup.find(artist_key) != mediastore_id_lookup.end()) {
+          artist_id = mediastore_id_lookup[artist_key];
+        } else if (split_artists.size() == 1) {
+          artist_id = original_id;
+        } else {
+          artist_id = separator.GenerateSplitArtistId(artist_name);
+        }
+
+        split_data.id = artist_id;
+
+        //Add ID-to-name mapping for split artists
+        if (artist_id < 0) {
+          separator.AddIdMapping(artist_id, artist_name);
+          std::cout << "[DatabaseManager] Added ID mapping: " << artist_id << " -> " << artist_name << std::endl;
+        }
+
+        split_data.number_of_albums = num_albums;
+        split_data.number_of_tracks = num_tracks;
+
+        seen_artists[artist_key] = split_data;
+      }
+    }
+  }
+
+  std::cout << "[DatabaseManager] Split artist count: " << seen_artists.size()
+            << " (from " << raw_artists.size() << " raw entries)" << std::endl;
+
+  //Insert split artists into database
+  const char* insert_sql = "INSERT INTO artists (id, artist, number_of_albums, number_of_tracks) VALUES (?, ?, ?, ?)";
+  sqlite3_stmt* insert_stmt = GetPreparedStatement(insert_sql);
+
+  if (insert_stmt) {
+    for (const auto& [key, artist] : seen_artists) {
+      sqlite3_bind_int64(insert_stmt, 1, artist.id);
+      sqlite3_bind_text(insert_stmt, 2, artist.artist.c_str(), -1, SQLITE_TRANSIENT);
+      sqlite3_bind_int(insert_stmt, 3, artist.number_of_albums);
+      sqlite3_bind_int(insert_stmt, 4, artist.number_of_tracks);
+
+      if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
+        std::cerr << "[DatabaseManager] Failed to insert artist: " << sqlite3_errmsg(db_) << std::endl;
+      }
+
+      sqlite3_reset(insert_stmt);
+    }
+  }
+
+  std::cout << "[DatabaseManager] Artists table updated with " << seen_artists.size() << " artists" << std::endl;
 }
 
 }  // namespace on_audio_query_linux

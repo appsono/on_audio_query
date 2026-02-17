@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <iostream>
 #include <sstream>
 
 namespace on_audio_query_linux {
@@ -201,16 +202,23 @@ void ArtistSeparator::AddIdMapping(int64_t artist_id, const std::string& artist_
 }
 
 std::string ArtistSeparator::GetArtistNameById(int64_t artist_id) {
+  std::cout << "[ArtistSeparator] Looking up ID: " << artist_id
+            << " (map size: " << id_to_name_map_.size() << ")" << std::endl;
   auto it = id_to_name_map_.find(artist_id);
   if (it != id_to_name_map_.end()) {
+    std::cout << "[ArtistSeparator] Found: " << it->second << std::endl;
     return it->second;
   }
+  std::cout << "[ArtistSeparator] Not found in map" << std::endl;
   return "";
 }
 
 void ArtistSeparator::ClearIndex() {
   split_artist_index_.clear();
-  id_to_name_map_.clear();
+  //Note: id_to_name_map_ is NOT cleared here because:
+  //1. The mappings are deterministic (same name always generates same ID)
+  //2. We need the mappings to persist across different query types
+  //3. The mappings will be rebuilt when processing artists anyway
 }
 
 bool ArtistSeparator::IsSplitArtistId(int64_t artist_id) {
