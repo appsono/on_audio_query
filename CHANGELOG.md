@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.3] - 2026-02-20
+
+### Fixed
+- **iOS: All queries failed when Apple Music not authorized** — The plugin blocked every query (songs, albums, artists, recently added) behind an `MPMediaLibrary` permission check. Since local-file queries use `FileManager`/`AVFoundation` and require no Apple Music authorization, the gate has been removed. Queries now always execute and return local-file results; Apple Music items are included when the user has granted that permission.
+- **iOS: Albums never appeared in the library** — `buildAlbums()` used `first["album_id"] as Any` to populate the `"_id"` field of each album entry. Subscripting a `[String: Any?]` dictionary returns `Any??` (double optional); casting that to `Any` wraps the double optional rather than extracting the integer, so the Flutter platform codec received `null` instead of the album ID. The ID-based filter in `getFilteredAlbums()` therefore discarded every local album. Fixed by iterating key-value pairs of the grouping dictionary and using the `Int` key directly. Same fix applied to `buildArtists()`.
+- **iOS: Fatal crash when sorting by duration** — `formatSongList` cast the `duration` field as `Double`, but duration is stored as `Int` (milliseconds). In Swift `as!` is a type cast, not a numeric conversion, so this caused a fatal runtime crash whenever a duration sort was applied. Changed to `as! Int`.
+- **iOS: Fatal crash when sorting by file size** — `formatSongList` force-cast `_size as! Int`, but Apple Music items that do not expose a file size store `nil` for this field. Force-casting `nil as! Int` is a fatal crash. Changed to `as? Int ?? 0`.
+- **iOS: AlbumQuery used song sort-type grouping** — `AlbumQuery` passed `checkSongSortType()` to `cursor.groupingType`, whose default is `.title` (group by song title). An album query must use `checkAlbumSortType()` (default `.album`) to group Apple Music items correctly by album.
+
+## [3.0.2] - 2026-02-20
+
+Fixed some issue that made the App unable to build.
+
 ## [3.0.1] - 2026-02-20
 
 ### Changed
