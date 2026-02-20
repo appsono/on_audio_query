@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.8] - 2026-02-24
+
+### Fixed
+- **iOS Apple Music/iCloud songs**: Fixed issue where offline songs from Apple Music or iCloud were not being queried correctly.
+  - The filter preventing cloud items from being fetched has been removed, as it was incorrectly blocking legally downloaded tracks.
+
+### Changed
+- Updated `on_audio_query_ios` to v1.1.3
+
+### Technical Details
+- **Modified**: `AudioQuery.swift`, `AlbumQuery.swift` - Removed the `is_cloud` item filter to allow songs from Apple Music and iCloud to be queried and refactored query logic for improved readability.
+
 ## [2.9.7] - 2026-02-17
 
 ### Added
@@ -67,7 +79,7 @@ All notable changes to this project will be documented in this file.
 - **Modified**: `ArtistSeparatorConfig.kt` - Expanded separator list and refined exception handling strategy
 - **Modified**: `ArtistQuery.kt` - Added direct song querying pass to discover missing artists from combined strings
 - Split artist detection now more comprehensive and accurate across all edge cases
-- 
+
 ## [2.9.3] - 2026-01-20
 
 ### Added
