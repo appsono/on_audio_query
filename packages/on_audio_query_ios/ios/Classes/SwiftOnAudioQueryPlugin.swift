@@ -67,23 +67,11 @@ public class SwiftOnAudioQueryPlugin: NSObject, FlutterPlugin {
             
             result(true)
         default:
-            Log.type.debug("Checking permissions...")
-
-            let hasPermission = PermissionController.checkPermission()
-            Log.type.debug("Application has permissions: \(hasPermission)")
-
-            if !hasPermission {
-                Log.type.error("The application doesn't have access to the library")
-                result(
-                    FlutterError(
-                        code: "MissingPermissions",
-                        message: "Application doesn't have access to the library",
-                        details: "Call the [permissionsRequest] method or install a external plugin to handle the app permission."
-                    )
-                )
-                break
-            }
-
+            // Note: we do NOT block queries on Apple Music permission
+            // Local-file queries use FileManager/AVFoundation and need no
+            // MPMediaLibrary authorization. The individual query classes
+            // already guard against missing Apple Music access by checking
+            // cursor.items / cursor.collections for nil
             MethodController().find()
         }
         

@@ -243,15 +243,19 @@ class LocalFileQuery {
             guard let albumId = song["album_id"] as? Int else { continue }
             albumGroups[albumId, default: []].append(song)
         }
-        return albumGroups.values.compactMap { albumSongs -> [String: Any?]? in
+        // Iterate key-value pairs so we can use the Int key directly for "_id"
+        // and "album_id". Using "first["album_id"] as Any" would produce a
+        // double-optional (Any??) that the Flutter codec cannot bridge, causing
+        // the field to arrive as null in Dart and breaking the album-ID filter
+        return albumGroups.compactMap { (albumId, albumSongs) -> [String: Any?]? in
             guard let first = albumSongs.first else { return nil }
             return [
                 "numsongs":  albumSongs.count,
-                "artist":    first["artist"] as Any,
-                "_id":       first["album_id"] as Any,
-                "album":     first["album"] as Any,
-                "artist_id": first["artist_id"] as Any,
-                "album_id":  first["album_id"] as Any
+                "artist":    first["artist"] as? String,
+                "_id":       albumId,
+                "album":     first["album"] as? String,
+                "artist_id": first["artist_id"] as? Int,
+                "album_id":  albumId
             ]
         }
     }
@@ -262,12 +266,13 @@ class LocalFileQuery {
             guard let artistId = song["artist_id"] as? Int else { continue }
             artistGroups[artistId, default: []].append(song)
         }
-        return artistGroups.values.compactMap { artistSongs -> [String: Any?]? in
+        // Same fix as buildAlbums: use the Int key directly to avoid double-optional
+        return artistGroups.compactMap { (artistId, artistSongs) -> [String: Any?]? in
             guard let first = artistSongs.first else { return nil }
             let albums = Set(artistSongs.compactMap { $0["album"] as? String })
             return [
-                "_id":              first["artist_id"] as Any,
-                "artist":           first["artist"] as Any,
+                "_id":              artistId,
+                "artist":           first["artist"] as? String,
                 "number_of_albums": albums.count,
                 "number_of_tracks": artistSongs.count
             ]

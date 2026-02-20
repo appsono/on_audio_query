@@ -17,7 +17,7 @@ class AlbumQuery {
         // Using native sort from [IOS] you can only use the [Album] and [Artist].
         // The others will be sorted "manually" using [formatAlbumList] before
         // send to Dart.
-        cursor.groupingType = checkSongSortType(sortType: sortType)
+        cursor.groupingType = checkAlbumSortType(sortType: sortType)
         
         Log.type.debug("Query config: ")
         Log.type.debug("\tsortType: \(sortType)")

@@ -40,16 +40,20 @@ public func formatSongList(args: [String: Any], allSongs: [[String: Any?]]) -> [
     //
     switch sortType {
     case 3:
+        // duration is stored as Int (milliseconds), not Double. Using Double
+        // would cause a fatal cast error at runtime
         tempList.sort { val1, val2 -> Bool in
-            (val1["duration"] as! Double) > (val2["duration"] as! Double)
+            (val1["duration"] as! Int) > (val2["duration"] as! Int)
         }
     case 4:
         tempList.sort { val1, val2 -> Bool in
             (val1["date_added"] as! Int) > (val2["date_added"] as! Int)
         }
     case 5:
+        // _size can be nil for Apple Music items that dont expose a file size
+        // Force-casting a nil Any? as! Int is a fatal error, so fall back to 0
         tempList.sort { val1, val2 -> Bool in
-            (val1["_size"] as! Int) > (val2["_size"] as! Int)
+            (val1["_size"] as? Int ?? 0) > (val2["_size"] as? Int ?? 0)
         }
     case 6:
         tempList.sort { val1, val2 -> Bool in
