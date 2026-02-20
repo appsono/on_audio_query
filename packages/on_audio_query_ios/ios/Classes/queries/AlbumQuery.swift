@@ -1,6 +1,5 @@
 import Flutter
 import MediaPlayer
-
 class AlbumQuery {
     var args: [String: Any]
     var result: FlutterResult
@@ -20,10 +19,6 @@ class AlbumQuery {
         // send to Dart.
         cursor.groupingType = checkSongSortType(sortType: sortType)
         
-        // NOTE: We intentionally do NOT filter by isCloudItem here.
-        // Apple Music downloaded tracks still have isCloudItem = true and
-        // assetURL = nil (DRM), so the old cloudFilter predicate blocked them entirely.
-        
         Log.type.debug("Query config: ")
         Log.type.debug("\tsortType: \(sortType)")
         
@@ -40,15 +35,10 @@ class AlbumQuery {
             // platforms.
             for album in cursor {
                 let firstItem = album.items[0]
-                // Include local files (assetURL != nil) and downloaded Apple Music tracks
-                // (isCloudItem = true but isDownloaded = true, assetURL = nil due to DRM).
-                // Exclude items that are cloud-only (not downloaded) and not local.
-                let isLocal = firstItem.assetURL != nil
-                let isDownloaded = firstItem.isDownloaded
-                if isLocal || isDownloaded {
-                    let albumData = loadAlbumItem(album: album)
-                    listOfAlbums.append(albumData)
-                }
+                
+                guard firstItem.assetURL != nil else { continue }
+                let albumData = loadAlbumItem(album: album)
+                listOfAlbums.append(albumData)
             }
             
             DispatchQueue.main.async {
