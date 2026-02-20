@@ -1,140 +1,140 @@
 import Flutter
 import MediaPlayer
 
-class AudioFromQuery {
+class ArtworkQuery {
     var args: [String: Any]
     var result: FlutterResult
-    var type: Int = -1
     
     init() {
         self.args = try! PluginProvider.call().arguments as! [String: Any]
         self.result = try! PluginProvider.result()
     }
     
-    func queryAudiosFrom() {
-        //
-        type = args["type"] as! Int
-        let wh3re = args["where"] as Any
-        // The sortType.
-        let sortType = args["sortType"] as? Int ?? 0
+    // [IOS] has a different artwork system and you can "query" using normal "querySongs, .."
+    // [Android] can't "query" artwork at the same time as "querySongs", so we need to "query"
+    // using a different method(queryArtwork).
+    //
+    // To match both [IOS] and [Android], [queryArtwork] is the only way to get artwork.
+    //
+    // Not the best solution but, at least here we can select differents formats and size.
+    func queryArtwork() {
+        // The 'id' of the [Song] or [Album].
+        let id = args["id"] as! Int
         
-        // Choose the type(To match android side, let's call "cursor").
-        var cursor: MPMediaQuery? = checkAudiosFrom(type: type, where: wh3re)
+        // The 'size' of the image.
+        let size = args["size"] as! Int
         
-        // Using native sort from [IOS] you can only use the [Title], [Album] and
-        // [Artist]. The others will be sorted "manually" using [formatSongList] before
-        // send to Dart.
-        cursor?.groupingType = checkSongSortType(sortType: sortType)
-        
-        // Here we'll check if the request is to [Playlist] or other.
-        if type != 6, cursor != nil {
-            // This filter will avoid audios/songs outside phone library(cloud).
-            let cloudFilter = MPMediaPropertyPredicate(
-                value: false,
-                forProperty: MPMediaItemPropertyIsCloudItem
-            )
-            cursor?.addFilterPredicate(cloudFilter)
-                
-            // Query everything in background for a better performance.
-            loadQueryAudiosFrom(cursor: cursor)
-        } else {
-            // Query everything in background for a better performance.
-            cursor = MPMediaQuery.playlists()
-                
-            // This filter will avoid audios/songs outside phone library(cloud).
-            let cloudFilter = MPMediaPropertyPredicate(
-                value: false,
-                forProperty: MPMediaItemPropertyIsCloudItem
-            )
-            cursor?.addFilterPredicate(cloudFilter)
-                
-            loadSongsFromPlaylist(cursor: cursor?.collections)
+        // The 'size' of the image.
+        var quality = args["quality"] as! Int
+        if quality > 100 {
+            quality = 50
         }
+        
+        // The format
+        //  * 0 -> JPEG
+        //  * 1 -> PNG
+        let format = args["format"] as! Int
+        
+        var cursor: MPMediaQuery?
+        var filter: MPMediaPropertyPredicate?
+            
+        let uri = args["type"] as! Int
+        switch uri {
+        case 0:
+            filter = MPMediaPropertyPredicate(value: id, forProperty: MPMediaItemPropertyPersistentID)
+            cursor = MPMediaQuery.songs()
+        case 1:
+            filter = MPMediaPropertyPredicate(value: id, forProperty: MPMediaItemPropertyAlbumPersistentID)
+            cursor = MPMediaQuery.albums()
+        case 2:
+            filter = MPMediaPropertyPredicate(value: id, forProperty: MPMediaPlaylistPropertyPersistentID)
+            cursor = MPMediaQuery.playlists()
+        case 3:
+            filter = MPMediaPropertyPredicate(value: id, forProperty: MPMediaItemPropertyArtistPersistentID)
+            cursor = MPMediaQuery.artists()
+        case 4:
+            filter = MPMediaPropertyPredicate(value: id, forProperty: MPMediaItemPropertyGenrePersistentID)
+            cursor = MPMediaQuery.genres()
+        default:
+            filter = nil
+            cursor = nil
+        }
+        
+        if cursor == nil || filter == nil {
+            Log.type.warning("Cursor or filter has null value!")
+            result(nil)
+            return
+        }
+        
+        Log.type.debug("Query config: ")
+        Log.type.debug("\tid: \(id)")
+        Log.type.debug("\tsize: \(size)")
+        Log.type.debug("\tquality: \(quality)")
+        Log.type.debug("\tformat: \(format)")
+        Log.type.debug("\turi: \(uri)")
+        Log.type.debug("\tfilter: \(String(describing: filter))")
+
+        cursor!.addFilterPredicate(filter!)
+            
+        // Filter to avoid audios/songs from cloud library.
+        let cloudFilter = MPMediaPropertyPredicate(
+            value: false,
+            forProperty: MPMediaItemPropertyIsCloudItem
+        )
+        cursor?.addFilterPredicate(cloudFilter)
+            
+        // Query everything in background for a better performance.
+        loadArtwork(cursor: cursor, size: size, format: format, uri: uri, quality: quality)
     }
     
-    private func loadQueryAudiosFrom(cursor: MPMediaQuery?) {
+    private func loadArtwork(cursor: MPMediaQuery!, size: Int, format: Int, uri: Int, quality: Int) {
         Task {
-            var listOfSongs: [[String: Any?]] = Array()
-
-            // Load from Apple Music library (guard against nil items)
-            if let items = cursor?.items {
-                for song in items {
-                    // If song file dont has an assetURL, it's a Cloud item
-                    if !song.isCloudItem, song.assetURL != nil {
-                        let songData = loadSongItem(song: song)
-                        listOfSongs.append(songData)
-                    }
-                }
+            var artwork: Data?
+            var item: MPMediaItem?
+            let convertedQuality = CGFloat(Double(quality) / 100.0)
+            
+            // 'uri' == 0         -> artwork is from [Song]
+            // 'uri' == 1, 2 or 3 -> artwork is from [Album], [Playlist] or [Artist]
+            if uri == 0 {
+                item = cursor!.items?.first
+            } else {
+                item = cursor!.collections?.first?.items[0]
+            }
+            
+            let cgSize = CGSize(width: size, height: size)
+            let image: UIImage? = item?.artwork?.image(at: cgSize)
+            
+            // 'format' == 0 -> JPEG
+            // 'format' == 1 -> PNG
+            if format == 0 {
+                artwork = image?.jpegData(compressionQuality: convertedQuality)
+            } else {
+                // [PNG] format will return a high quality image.
+                artwork = image?.pngData()
             }
 
-            // If nothing came back from MediaLibrary, try the local Documents/Music folder.
-            // This handles local-file album/artist IDs that aren't in Apple Music.
-            if listOfSongs.isEmpty {
-                let whereValue = self.args["where"] as Any
-                listOfSongs = await LocalFileQuery().queryAudiosFrom(
-                    type: self.type,
-                    where: whereValue
+            // Fallback: try to read embedded artwork from a local file in Documents/Music/
+            if artwork == nil || artwork!.isEmpty {
+                let artworkId = self.args["id"] as! Int
+                artwork = await LocalFileQuery().artworkData(
+                    forId: artworkId,
+                    type: uri,
+                    size: size,
+                    format: format,
+                    quality: quality
                 )
             }
 
-            let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
-            
             DispatchQueue.main.async {
-                self.result(finalList)
-            }
-        }
-    }
-    
-    // Playlist loading doesnt use LocalFileQuery, so stays as DispatchQueue
-    private func loadSongsFromPlaylist(cursor: [MPMediaItemCollection]?) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            var listOfSongs: [[String: Any?]] = Array()
-            
-            // Here we need a different approach.
-            //
-            // First, query all playlists. After check if the argument is a:
-            //   - [String]: The playlist [Name].
-            //   - [Int]: The playlist [Id].
-            //
-            // Second, find the specific playlist using/comparing the argument.
-            // After, query all item(song) from this playlist.
-            for playlist in cursor ?? [] {
-                let iPlaylist = playlist as! MPMediaPlaylist
-                let iWhere = self.args["where"] as Any
-                // Using this check we can define if [where] is the [Playlist] name or id
-                if iWhere is String {
-                    // Check if playlist name is equal to defined name
-                    if iPlaylist.name == iWhere as? String {
-                        // For each song, format and add to the list
-                        for song in playlist.items {
-                            // If the song file do have a assetURL, it's a Cloud item
-                            if !song.isCloudItem, song.assetURL != nil {
-                                let songData = loadSongItem(song: song)
-                                listOfSongs.append(songData)
-                            }
-                        }
+                // Avoid "empty" or broken image.
+                if artwork != nil, artwork!.isEmpty {
+                    if PluginProvider.showDetailedLog {
+                        Log.type.warning("Item (\(item?.persistentID ?? 0)) has a null or empty artwork")
                     }
-                } else {
-                    // Check if playlist id is equal to defined id
-                    if iPlaylist.persistentID == iWhere as! Int {
-                        // For each song, format and add to the list
-                        for song in playlist.items {
-                            // If song file dont has a assetURL, is a Cloud item
-                            if !song.isCloudItem, song.assetURL != nil {
-                                let songData = loadSongItem(song: song)
-                                listOfSongs.append(songData)
-                            }
-                        }
-                    }
+                    artwork = nil
                 }
-            }
-            
-            // After finish the "query", go back to the "main" thread 
-            // (You can only call flutter inside the main thread)
-            DispatchQueue.main.async {
-                //here well check the "custom" sort and define a order to the list
-                let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
-                self.result(finalList)
+                
+                self.result(artwork)
             }
         }
     }
