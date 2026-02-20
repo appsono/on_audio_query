@@ -68,16 +68,16 @@ class LocalFileQuery {
         switch type {
         case 0: //ALBUM_TITLE (String)
             guard let name = whereValue as? String else { return [] }
-            return songs.filter { ($0["album"] as? String) == name }
+            return songs.filter { ($0["album"] ?? nil) as? String == name }
         case 1: //ALBUM_ID (Int)
             guard let id = whereValue as? Int else { return [] }
-            return songs.filter { ($0["album_id"] as? Int) == id }
+            return songs.filter { ($0["album_id"] ?? nil) as? Int == id }
         case 2: //ARTIST_NAME (String)
             guard let name = whereValue as? String else { return [] }
-            return songs.filter { ($0["artist"] as? String) == name }
+            return songs.filter { ($0["artist"] ?? nil) as? String == name }
         case 3: //ARTIST_ID (Int)
             guard let id = whereValue as? Int else { return [] }
-            return songs.filter { ($0["artist_id"] as? Int) == id }
+            return songs.filter { ($0["artist_id"] ?? nil) as? Int == id }
         default:
             return []
         }
@@ -90,13 +90,13 @@ class LocalFileQuery {
 
         let match: [String: Any?]?
         if type == 0 {
-            match = songs.first { ($0["_id"] as? Int) == id }
+            match = songs.first { ($0["_id"] ?? nil) as? Int == id }
         } else {
-            match = songs.first { ($0["album_id"] as? Int) == id }
+            match = songs.first { ($0["album_id"] ?? nil) as? Int == id }
         }
 
         guard let songData = match,
-              let uriString = songData["_uri"] as? String,
+              let uriString = (songData["_uri"] ?? nil) as? String,
               let fileURL = URL(string: uriString) else { return nil }
 
         let asset = AVURLAsset(url: fileURL)
@@ -249,12 +249,17 @@ class LocalFileQuery {
         // the field to arrive as null in Dart and breaking the album-ID filter
         return albumGroups.compactMap { (albumId, albumSongs) -> [String: Any?]? in
             guard let first = albumSongs.first else { return nil }
+            // Subscripting [String: Any?] returns Any?? (double optional).
+            // "(first[key] ?? nil) as? T" collapses the outer optional to Any?
+            // so the conditional cast operates on one optional level, not two.
+            // Skip albums with no title => AlbumModel.album is non-nullable in Dart.
+            guard let albumTitle = (first["album"] ?? nil) as? String else { return nil }
             return [
                 "numsongs":  albumSongs.count,
-                "artist":    first["artist"] as? String,
+                "artist":    (first["artist"] ?? nil) as? String,
                 "_id":       albumId,
-                "album":     first["album"] as? String,
-                "artist_id": first["artist_id"] as? Int,
+                "album":     albumTitle,
+                "artist_id": (first["artist_id"] ?? nil) as? Int,
                 "album_id":  albumId
             ]
         }
@@ -269,10 +274,10 @@ class LocalFileQuery {
         // Same fix as buildAlbums: use the Int key directly to avoid double-optional
         return artistGroups.compactMap { (artistId, artistSongs) -> [String: Any?]? in
             guard let first = artistSongs.first else { return nil }
-            let albums = Set(artistSongs.compactMap { $0["album"] as? String })
+            let albums = Set(artistSongs.compactMap { ($0["album"] ?? nil) as? String })
             return [
                 "_id":              artistId,
-                "artist":           first["artist"] as? String,
+                "artist":           (first["artist"] ?? nil) as? String,
                 "number_of_albums": albums.count,
                 "number_of_tracks": artistSongs.count
             ]
