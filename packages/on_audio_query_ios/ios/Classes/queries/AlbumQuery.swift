@@ -27,7 +27,7 @@ class AlbumQuery {
     }
 
     private func loadAlbums(cursor: [MPMediaItemCollection]?) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task {
             var listOfAlbums: [[String: Any?]] = Array()
             // Load from Apple Music lib (guard against nil empty)
             if let collections = cursor {
@@ -38,12 +38,13 @@ class AlbumQuery {
                     }
                 }
             }
-            // Load albums built from apps local documents
-            let localAlbums = LocalFileQuery().queryAlbums()
+            // Load albums built from apps local documents (async)
+            let localAlbums = await LocalFileQuery().queryAlbums()
             listOfAlbums.append(contentsOf: localAlbums)
+            
+            let finalList = formatAlbumList(args: self.args, allAlbums: listOfAlbums)
+            
             DispatchQueue.main.async {
-                // Custom sort/order.
-                let finalList = formatAlbumList(args: self.args, allAlbums: listOfAlbums)
                 self.result(finalList)
             }
         }

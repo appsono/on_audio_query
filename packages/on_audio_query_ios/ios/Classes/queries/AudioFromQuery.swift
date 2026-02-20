@@ -53,7 +53,7 @@ class AudioFromQuery {
     }
     
     private func loadQueryAudiosFrom(cursor: MPMediaQuery?) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task {
             var listOfSongs: [[String: Any?]] = Array()
 
             // Load from Apple Music library (guard against nil items)
@@ -71,22 +71,21 @@ class AudioFromQuery {
             // This handles local-file album/artist IDs that aren't in Apple Music.
             if listOfSongs.isEmpty {
                 let whereValue = self.args["where"] as Any
-                listOfSongs = LocalFileQuery().queryAudiosFrom(
+                listOfSongs = await LocalFileQuery().queryAudiosFrom(
                     type: self.type,
                     where: whereValue
                 )
             }
 
-            // After finish the "query", go back to the "main" thread.
+            let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
+            
             DispatchQueue.main.async {
-                // Here we'll check the "custom" sort and define a order to the list.
-                let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
                 self.result(finalList)
             }
         }
     }
     
-    // Add a better code
+    // Playlist loading doesnt use LocalFileQuery, so stays as DispatchQueue
     private func loadSongsFromPlaylist(cursor: [MPMediaItemCollection]?) {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfSongs: [[String: Any?]] = Array()
@@ -94,8 +93,8 @@ class AudioFromQuery {
             // Here we need a different approach.
             //
             // First, query all playlists. After check if the argument is a:
-            //   * [String]: The playlist [Name].
-            //   * [Int]: The playlist [Id].
+            //   - [String]: The playlist [Name].
+            //   - [Int]: The playlist [Id].
             //
             // Second, find the specific playlist using/comparing the argument.
             // After, query all item(song) from this playlist.

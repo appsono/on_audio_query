@@ -31,24 +31,40 @@ class LocalFileQuery {
         return musicDir
     }
 
-    // MARK: - Public Query Methods
+    // MARK: - Public Query Methods (Async)
 
-    func querySongs() -> [[String: Any?]] {
-        return enumerateAudioFiles().compactMap { loadLocalSong(fileURL: $0) }
+    func querySongs() async -> [[String: Any?]] {
+        let urls = enumerateAudioFiles()
+
+        return await withTaskGroup(of: [String: Any?]?.self) { group in
+            for url in urls {
+                group.addTask {
+                    return await self.loadLocalSong(fileURL: url)
+                }
+            }
+
+            var results: [[String: Any?]] = []
+            for await song in group {
+                if let song = song {
+                    results.append(song)
+                }
+            }
+            return results
+        }
     }
 
-    func queryAlbums() -> [[String: Any?]] {
-        return buildAlbums(from: querySongs())
+    func queryAlbums() async -> [[String: Any?]] {
+        return buildAlbums(from: await querySongs())
     }
 
-    func queryArtists() -> [[String: Any?]] {
-        return buildArtists(from: querySongs())
+    func queryArtists() async -> [[String: Any?]] {
+        return buildArtists(from: await querySongs())
     }
 
     /// Filters local songs matching the same type/where semantics used by MPMediaQuery
     /// type 0 = album name, 1 = album id, 2 = artist name, 3 = artist id
-    func queryAudiosFrom(type: Int, where whereValue: Any) -> [[String: Any?]] {
-        let songs = querySongs()
+    func queryAudiosFrom(type: Int, where whereValue: Any) async -> [[String: Any?]] {
+        let songs = await querySongs()
         switch type {
         case 0: //ALBUM_TITLE (String)
             guard let name = whereValue as? String else { return [] }
@@ -69,8 +85,8 @@ class LocalFileQuery {
 
     /// Returns embedded cover art for a local song or album
     /// type 0 = look up by song id, type 1 = look up by album id
-    func artworkData(forId id: Int, type: Int, size: Int, format: Int, quality: Int) -> Data? {
-        let songs = querySongs()
+    func artworkData(forId id: Int, type: Int, size: Int, format: Int, quality: Int) async -> Data? {
+        let songs = await querySongs()
 
         let match: [String: Any?]?
         if type == 0 {
@@ -84,18 +100,26 @@ class LocalFileQuery {
               let fileURL = URL(string: uriString) else { return nil }
 
         let asset = AVURLAsset(url: fileURL)
-        for item in asset.commonMetadata {
-            guard item.commonKey == .commonKeyArtwork,
-                  let rawData = item.value as? Data,
-                  let image = UIImage(data: rawData) else { continue }
 
-            let cgSize = CGSize(width: size, height: size)
-            guard let resized = resizeImage(image, to: cgSize) else { return nil }
-            let convertedQuality = CGFloat(Double(quality) / 100.0)
-            return format == 0
-                ? resized.jpegData(compressionQuality: convertedQuality)
-                : resized.pngData()
+        do {
+            let metadata = try await asset.load(.commonMetadata)
+
+            for item in metadata {
+                guard item.commonKey == .commonKeyArtwork,
+                      let rawData = item.value as? Data,
+                      let image = UIImage(data: rawData) else { continue }
+
+                let cgSize = CGSize(width: size, height: size)
+                guard let resized = resizeImage(image, to: cgSize) else { return nil }
+                let convertedQuality = CGFloat(Double(quality) / 100.0)
+                return format == 0
+                    ? resized.jpegData(compressionQuality: convertedQuality)
+                    : resized.pngData()
+            }
+        } catch {
+            Log.type.warning("Failed to load artwork metadata for \(fileURL.lastPathComponent): \(error)")
         }
+
         return nil
     }
 
@@ -123,93 +147,94 @@ class LocalFileQuery {
         return files
     }
 
-    private func loadLocalSong(fileURL: URL) -> [String: Any?]? {
+    private func loadLocalSong(fileURL: URL) async -> [String: Any?]? {
         let asset = AVURLAsset(
             url: fileURL,
             options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
         )
 
-        // Load duration and metadata synchronously on the background thread
-        let semaphore = DispatchSemaphore(value: 0)
-        asset.loadValuesForKeys(["duration", "commonMetadata"]) {
-            semaphore.signal()
-        }
-        _ = semaphore.wait(timeout: .now() + 5.0)
+        do {
+            // Load duration and metadata in parallel using the modern async API
+            // This replaces the old DispatchSemaphore-based synchronous loading
+            let (durationCM, commonMetadata) = try await asset.load(.duration, .commonMetadata)
 
-        // Duration
-        var duration = 0
-        let durationCM = asset.duration
-        if durationCM.isNumeric && !durationCM.isIndefinite {
-            duration = max(0, Int(CMTimeGetSeconds(durationCM) * 1000))
-        }
-
-        // Metadata
-        var title = fileURL.deletingPathExtension().lastPathComponent
-        var artist: String? = nil
-        var albumTitle: String? = nil
-        var composer: String? = nil
-
-        for item in asset.commonMetadata {
-            guard let key = item.commonKey else { continue }
-            switch key {
-            case .commonKeyTitle:
-                if let val = item.stringValue { title = val }
-            case .commonKeyArtist:
-                artist = item.stringValue
-            case .commonKeyAlbumName:
-                albumTitle = item.stringValue
-            case .commonKeyCreator:
-                composer = item.stringValue
-            default:
-                break
+            // Duration
+            var duration = 0
+            if durationCM.isNumeric && !durationCM.isIndefinite {
+                duration = max(0, Int(CMTimeGetSeconds(durationCM) * 1000))
             }
+
+            // Metadata
+            var title = fileURL.deletingPathExtension().lastPathComponent
+            var artist: String? = nil
+            var albumTitle: String? = nil
+            var composer: String? = nil
+
+            for item in commonMetadata {
+                guard let key = item.commonKey else { continue }
+                switch key {
+                case .commonKeyTitle:
+                    if let val = item.stringValue { title = val }
+                case .commonKeyArtist:
+                    artist = item.stringValue
+                case .commonKeyAlbumName:
+                    albumTitle = item.stringValue
+                case .commonKeyCreator:
+                    composer = item.stringValue
+                default:
+                    break
+                }
+            }
+
+            // File attributes
+            let resources = try? fileURL.resourceValues(
+                forKeys: [.fileSizeKey, .creationDateKey, .contentModificationDateKey]
+            )
+            let fileSize = resources?.fileSize ?? 0
+            let dateAdded = resources?.creationDate ?? Date()
+            let dateModified = resources?.contentModificationDate ?? Date()
+            let fileExt = fileURL.pathExtension.lowercased()
+
+            // Stable IDs derived from path / metadata strings
+            let songId   = stableId(for: fileURL.path)
+            let albumKey = "\(albumTitle ?? "")|\(artist ?? "")"
+            let albumId  = stableId(for: albumKey)
+            let artistId = stableId(for: artist ?? "")
+
+            let displayNameWOExt: String
+            if let a = artist, !a.isEmpty {
+                displayNameWOExt = "\(a) - \(title)"
+            } else {
+                displayNameWOExt = title
+            }
+
+            return [
+                "_id":                  songId,
+                "_data":                fileURL.absoluteString,
+                "_uri":                 fileURL.absoluteString,
+                "_display_name":        "\(displayNameWOExt).\(fileExt)",
+                "_display_name_wo_ext": displayNameWOExt,
+                "_size":                fileSize,
+                "album":                albumTitle,
+                "album_id":             albumId,
+                "artist":               artist,
+                "artist_id":            artistId,
+                "genre":                nil as String?,
+                "genre_id":             nil as Int?,
+                "bookmark":             0,
+                "composer":             composer,
+                "date_added":           Int(dateAdded.timeIntervalSince1970),
+                "date_modified":        Int(dateModified.timeIntervalSince1970),
+                "duration":             duration,
+                "title":                title,
+                "track":                0,
+                "disc_number":          0,
+                "file_extension":       fileExt
+            ]
+        } catch {
+            Log.type.warning("Failed to load metadata for \(fileURL.lastPathComponent): \(error)")
+            return nil
         }
-
-        // File attributes
-        let resources = try? fileURL.resourceValues(
-            forKeys: [.fileSizeKey, .creationDateKey, .contentModificationDateKey]
-        )
-        let fileSize = resources?.fileSize ?? 0
-        let dateAdded = resources?.creationDate ?? Date()
-        let dateModified = resources?.contentModificationDate ?? Date()
-        let fileExt = fileURL.pathExtension.lowercased()
-
-        // Stable IDs derived from path / metadata strings
-        let songId   = stableId(for: fileURL.path)
-        let albumKey = "\(albumTitle ?? "")|\(artist ?? "")"
-        let albumId  = stableId(for: albumKey)
-        let artistId = stableId(for: artist ?? "")
-
-        let displayNameWOExt: String
-        if let a = artist, !a.isEmpty {
-            displayNameWOExt = "\(a) - \(title)"
-        } else {
-            displayNameWOExt = title
-        }
-
-        return [
-            "_id":                  songId,
-            "_data":                fileURL.absoluteString,
-            "_uri":                 fileURL.absoluteString,
-            "_display_name":        "\(displayNameWOExt).\(fileExt)",
-            "_display_name_wo_ext": displayNameWOExt,
-            "_size":                fileSize,
-            "album":                albumTitle,
-            "album_id":             albumId,
-            "artist":               artist,
-            "artist_id":            artistId,
-            "genre":                nil as String?,
-            "genre_id":             nil as Int?,
-            "bookmark":             0,
-            "composer":             composer,
-            "date_added":           Int(dateAdded.timeIntervalSince1970),
-            "date_modified":        Int(dateModified.timeIntervalSince1970),
-            "duration":             duration,
-            "title":                title,
-            "track":                0,
-            "disc_number":          0,
-            "file_extension":       fileExt
-        ]
     }
 
     private func buildAlbums(from songs: [[String: Any?]]) -> [[String: Any?]] {
@@ -264,7 +289,7 @@ class LocalFileQuery {
             hash ^= UInt64(byte)
             hash = hash &* 1099511628211
         }
-        // Keep 63 bits → always positive when viewed as signed Int64
+        // Keep 63 bits => always positive when viewed as signed Int64
         let result = Int(bitPattern: UInt(hash & 0x7FFFFFFFFFFFFFFF))
         return result == 0 ? 1 : result
     }

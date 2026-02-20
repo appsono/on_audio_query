@@ -28,7 +28,7 @@ class ArtistQuery {
     }
     
     private func loadArtists(cursor: [MPMediaItemCollection]?) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task {
             var listOfArtists: [[String: Any?]] = Array()
 
             // Load from Apple Music lib (guard against nil when empty)
@@ -41,13 +41,13 @@ class ArtistQuery {
                 }
             }
 
-            // Also load artists built from apps local documents
-            let localArtists = LocalFileQuery().queryArtists()
+            // Also load artists built from apps local documents (async)
+            let localArtists = await LocalFileQuery().queryArtists()
             listOfArtists.append(contentsOf: localArtists)
 
+            let finalList = formatArtistList(args: self.args, allArtists: listOfArtists)
+            
             DispatchQueue.main.async {
-                // Custom sort/order.
-                let finalList = formatArtistList(args: self.args, allArtists: listOfArtists)
                 self.result(finalList)
             }
         }

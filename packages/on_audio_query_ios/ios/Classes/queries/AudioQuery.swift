@@ -27,7 +27,7 @@ class AudioQuery {
     }
     
     private func loadSongs(cursor: MPMediaQuery!) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task {
             var listOfSongs: [[String: Any?]] = Array()
             
             // Load from Apple Music lib (guard against nil items when empty)
@@ -40,13 +40,13 @@ class AudioQuery {
                 }
             }
             
-            // Also load songs from the apps local documents
-            let localSongs = LocalFileQuery().querySongs()
+            // Also load songs from the apps local documents (async)
+            let localSongs = await LocalFileQuery().querySongs()
             listOfSongs.append(contentsOf: localSongs)
             
+            let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
+            
             DispatchQueue.main.async {
-                // Custom sort/order.
-                let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
                 self.result(finalList)
             }
         }
