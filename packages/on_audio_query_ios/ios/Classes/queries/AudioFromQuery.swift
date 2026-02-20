@@ -36,7 +36,7 @@ class AudioFromQuery {
             cursor?.addFilterPredicate(cloudFilter)
                 
             // Query everything in background for a better performance.
-            loadQueryAudiosFrom(cursor: cursor!)
+            loadQueryAudiosFrom(cursor: cursor)
         } else {
             // Query everything in background for a better performance.
             cursor = MPMediaQuery.playlists()
@@ -48,27 +48,36 @@ class AudioFromQuery {
             )
             cursor?.addFilterPredicate(cloudFilter)
                 
-            loadSongsFromPlaylist(cursor: cursor!.collections)
+            loadSongsFromPlaylist(cursor: cursor?.collections)
         }
     }
     
-    private func loadQueryAudiosFrom(cursor: MPMediaQuery!) {
+    private func loadQueryAudiosFrom(cursor: MPMediaQuery?) {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfSongs: [[String: Any?]] = Array()
-            
-            // For each item(song) inside this "cursor", take one and "format"
-            // into a [Map<String, dynamic>], all keys are based on [Android]
-            // platforms so, if you change some key, will have to change the [Android] too.
-            for song in cursor.items! {
-                // If the song file don't has a assetURL, is a Cloud item.
-                if !song.isCloudItem, song.assetURL != nil {
-                    let songData = loadSongItem(song: song)
-                    listOfSongs.append(songData)
+
+            // Load from Apple Music library (guard against nil items)
+            if let items = cursor?.items {
+                for song in items {
+                    // If song file dont has an assetURL, it's a Cloud item
+                    if !song.isCloudItem, song.assetURL != nil {
+                        let songData = loadSongItem(song: song)
+                        listOfSongs.append(songData)
+                    }
                 }
             }
-            
-            // After finish the "query", go back to the "main" thread(You can only call flutter
-            // inside the main thread).
+
+            // If nothing came back from MediaLibrary, try the local Documents/Music folder.
+            // This handles local-file album/artist IDs that aren't in Apple Music.
+            if listOfSongs.isEmpty {
+                let whereValue = self.args["where"] as Any
+                listOfSongs = LocalFileQuery().queryAudiosFrom(
+                    type: self.type,
+                    where: whereValue
+                )
+            }
+
+            // After finish the "query", go back to the "main" thread.
             DispatchQueue.main.async {
                 // Here we'll check the "custom" sort and define a order to the list.
                 let finalList = formatSongList(args: self.args, allSongs: listOfSongs)
@@ -78,7 +87,7 @@ class AudioFromQuery {
     }
     
     // Add a better code
-    private func loadSongsFromPlaylist(cursor: [MPMediaItemCollection]!) {
+    private func loadSongsFromPlaylist(cursor: [MPMediaItemCollection]?) {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfSongs: [[String: Any?]] = Array()
             
@@ -90,7 +99,7 @@ class AudioFromQuery {
             //
             // Second, find the specific playlist using/comparing the argument.
             // After, query all item(song) from this playlist.
-            for playlist in cursor {
+            for playlist in cursor ?? [] {
                 let iPlaylist = playlist as! MPMediaPlaylist
                 let iWhere = self.args["where"] as Any
                 // Using this check we can define if [where] is the [Playlist] name or id

@@ -30,14 +30,19 @@ class AudioQuery {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfSongs: [[String: Any?]] = Array()
             
-            // For each item(song) inside this "cursor", take one and "format"
-            // into a [Map<String, dynamic>], all keys are based on [Android]
-            // platforms.
-            for song in cursor.items! {
-                guard song.assetURL != nil else { continue }
-                let songData = loadSongItem(song: song)
-                listOfSongs.append(songData)
+            // Load from Apple Music lib (guard against nil items when empty)
+            if let items = cursor.items {
+                for song in items {
+                    if !song.isCloudItem, song.assetURL != nil {
+                        let songData = loadSongItem(song: song)
+                        listOfSongs.append(songData)
+                    }
+                }
             }
+            
+            // Also load songs from the apps local documents
+            let localSongs = LocalFileQuery().querySongs()
+            listOfSongs.append(contentsOf: localSongs)
             
             DispatchQueue.main.async {
                 // Custom sort/order.

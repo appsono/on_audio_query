@@ -27,20 +27,24 @@ class ArtistQuery {
         loadArtists(cursor: cursor.collections)
     }
     
-    private func loadArtists(cursor: [MPMediaItemCollection]!) {
+    private func loadArtists(cursor: [MPMediaItemCollection]?) {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfArtists: [[String: Any?]] = Array()
-            
-            // For each item(artist) inside this "cursor", take one and "format"
-            // into a [Map<String, dynamic>], all keys are based on [Android]
-            // platforms.
-            for artist in cursor {
-                if !artist.items[0].isCloudItem, artist.items[0].assetURL != nil {
-                    let artistData = loadArtistItem(artist: artist)
-                    listOfArtists.append(artistData)
+
+            // Load from Apple Music lib (guard against nil when empty)
+            if let collections = cursor {
+                for artist in collections {
+                    if !artist.items[0].isCloudItem, artist.items[0].assetURL != nil {
+                        let artistData = loadArtistItem(artist: artist)
+                        listOfArtists.append(artistData)
+                    }
                 }
             }
-            
+
+            // Also load artists built from apps local documents
+            let localArtists = LocalFileQuery().queryArtists()
+            listOfArtists.append(contentsOf: localArtists)
+
             DispatchQueue.main.async {
                 // Custom sort/order.
                 let finalList = formatArtistList(args: self.args, allArtists: listOfArtists)

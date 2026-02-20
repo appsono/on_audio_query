@@ -112,7 +112,19 @@ class ArtworkQuery {
                 // [PNG] format will return a high quality image.
                 artwork = image?.pngData()
             }
-            
+
+            // Fallback: try to read embedded artwork from a local file in Documents/Music/
+            if artwork == nil || artwork!.isEmpty {
+                let artworkId = self.args["id"] as! Int
+                artwork = LocalFileQuery().artworkData(
+                    forId: artworkId,
+                    type: uri,
+                    size: size,
+                    format: format,
+                    quality: quality
+                )
+            }
+
             DispatchQueue.main.async {
                 // Avoid "empty" or broken image.
                 if artwork != nil, artwork!.isEmpty {

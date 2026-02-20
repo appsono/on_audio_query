@@ -25,22 +25,22 @@ class AlbumQuery {
         // Query everything in background for a better performance.
         loadAlbums(cursor: cursor.collections)
     }
-    
-    private func loadAlbums(cursor: [MPMediaItemCollection]!) {
+
+    private func loadAlbums(cursor: [MPMediaItemCollection]?) {
         DispatchQueue.global(qos: .userInitiated).async {
             var listOfAlbums: [[String: Any?]] = Array()
-            
-            // For each item(album) inside this "cursor", take one and "format"
-            // into a [Map<String, dynamic>], all keys are based on [Android]
-            // platforms.
-            for album in cursor {
-                let firstItem = album.items[0]
-                
-                guard firstItem.assetURL != nil else { continue }
-                let albumData = loadAlbumItem(album: album)
-                listOfAlbums.append(albumData)
+            // Load from Apple Music lib (guard against nil empty)
+            if let collections = cursor {
+                for album in collections {
+                    if !album.items[0].isCloudItem, album.items[0].assetURL != nil {
+                        let albumData = loadAlbumItem(album: album)
+                        listOfAlbums.append(albumData)
+                    }
+                }
             }
-            
+            // Load albums built from apps local documents
+            let localAlbums = LocalFileQuery().queryAlbums()
+            listOfAlbums.append(contentsOf: localAlbums)
             DispatchQueue.main.async {
                 // Custom sort/order.
                 let finalList = formatAlbumList(args: self.args, allAlbums: listOfAlbums)
