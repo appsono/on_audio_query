@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.4] - 2026-02-20
+
+### Fixed
+- **iOS: Albums crash on render** — `buildAlbums`/`buildArtists`/`queryAudiosFrom`/`artworkData` all used `dict["key"] as? T` on `[String: Any?]` dictionaries, which returns `Any??`; the cast operates on the wrapper and always yields nil. Changed to `(dict["key"] ?? nil) as? T` to collapse to `Any?` first. Albums without an album-title tag are now skipped (the `AlbumModel.album` getter is non-nullable).
+
 ## [3.0.3] - 2026-02-20
 
 ### Fixed

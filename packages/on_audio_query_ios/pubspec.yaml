@@ -5,7 +5,7 @@
 # ========
 name: on_audio_query_ios
 description: iOS implementation of the on_audio_query plugin.
-version: 1.1.6
+version: 1.1.7
 publish_to: none
 homepage: https://github.com/LucJosin/on_audio_query/tree/main/packages/on_audio_query_ios
 # pub.dev: https://pub.dev/packages/on_audio_query
