@@ -20,12 +20,9 @@ class AudioQuery {
         // send to Dart.
         cursor.groupingType = checkSongSortType(sortType: sortType)
         
-        // Filter to avoid audios/songs from cloud library.
-        let cloudFilter = MPMediaPropertyPredicate(
-            value: false,
-            forProperty: MPMediaItemPropertyIsCloudItem
-        )
-        cursor.addFilterPredicate(cloudFilter)
+        // NOTE: We intentionally do NOT filter by isCloudItem here.
+        // Apple Music downloaded tracks still have isCloudItem = true and
+        // assetURL = nil (DRM), so the old cloudFilter predicate blocked them entirely.
         
         Log.type.debug("Query config: ")
         Log.type.debug("\tsortType: \(sortType)")
@@ -42,8 +39,11 @@ class AudioQuery {
             // into a [Map<String, dynamic>], all keys are based on [Android]
             // platforms.
             for song in cursor.items! {
-                // Ignore cloud items.
-                if !song.isCloudItem, song.assetURL != nil {
+                // Include local files and downloaded Apple Music tracks.
+                // Apple Music items have isCloudItem=true and assetURL=nil (DRM) even when downloaded.
+                let isLocal = song.assetURL != nil
+                let isDownloaded = song.isDownloaded
+                if isLocal || isDownloaded {
                     let songData = loadSongItem(song: song)
                     listOfSongs.append(songData)
                 }
