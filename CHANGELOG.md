@@ -2,7 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.9.8] - 2026-02-24
+## [3.0.0] - 2026-02-24
+
+### Added
+- **iOS local file support**: Songs placed in `Documents/Music/` inside the app sandbox are now included in all queries alongside Apple Music library items.
+  - Users can populate the folder from the iOS Files app (requires `UIFileSharingEnabled` in `Info.plist`).
+  - Supported formats: `mp3`, `m4a`, `flac`, `wav`, `aac`, `ogg`, `opus`, `aiff`, `aif`, `alac`, `wv`, `ape`.
+  - Metadata (title, artist, album, composer, duration, file size, dates) is extracted via `AVFoundation`.
+  - Stable, deterministic IDs are generated from file paths / metadata using an FNV-1a hash so IDs are consistent across app launches.
+  - Embedded cover art in local files is surfaced through the existing artwork query API with the same resize/format/quality options.
+
+### Changed
+- Updated `on_audio_query_ios` to v1.1.5
+
+### Fixed
+- **iOS nil safety**: Replaced forced-unwrap (`!`) accesses on `MPMediaQuery` items and `MPMediaItemCollection` arrays with safe optional binding throughout `AudioQuery`, `AlbumQuery`, `ArtistQuery`, and `AudioFromQuery`. This prevents crashes when the media library is empty or authorization is restricted.
+
+### Technical Details
+- **New**: `LocalFileQuery.swift` — scans `Documents/Music/`, reads `AVURLAsset` metadata, and exposes `querySongs()`, `queryAlbums()`, `queryArtists()`, `queryAudiosFrom(type:where:)`, and `artworkData(forId:type:size:format:quality:)`.
+- **Modified**: `AudioQuery.swift`, `AlbumQuery.swift`, `ArtistQuery.swift` — results from `LocalFileQuery` are appended to the Apple Music results before sorting/filtering is applied.
+- **Modified**: `AudioFromQuery.swift` — falls back to `LocalFileQuery.queryAudiosFrom` when `MPMediaQuery` returns no items (covers local-file album/artist IDs that don't exist in Apple Music).
+- **Modified**: `ArtworkQuery.swift` — falls back to `LocalFileQuery.artworkData` when Apple Music returns no artwork for a given ID.
+
+## [2.9.8 - 2.9.9] - 2026-02-24
 
 ### Fixed
 - **iOS Apple Music/iCloud songs**: Fixed issue where offline songs from Apple Music or iCloud were not being queried correctly.
@@ -10,6 +32,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Updated `on_audio_query_ios` to v1.1.3
+- Updated `on_audio_query_ios` to v1.1.4
 
 ### Technical Details
 - **Modified**: `AudioQuery.swift`, `AlbumQuery.swift` - Removed the `is_cloud` item filter to allow songs from Apple Music and iCloud to be queried and refactored query logic for improved readability.
