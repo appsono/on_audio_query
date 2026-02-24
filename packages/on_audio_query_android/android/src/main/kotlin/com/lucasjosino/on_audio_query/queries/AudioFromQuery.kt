@@ -48,6 +48,9 @@ class AudioFromQuery : ViewModel() {
     private var isSplitArtistQuery = false
     private var splitArtistName: String? = null
 
+    // Whether the current pUri query is for a playlist (needs audio_id remapping)
+    private var isPlaylistQuery = false
+
     /**
      * Method to "query" all songs from a specific item.
      */
@@ -272,6 +275,7 @@ class AudioFromQuery : ViewModel() {
 
         if (!checkedName) pId = info.toString().toInt()
 
+        isPlaylistQuery = type == 6
         pUri = if (type == 4 || type == 5) {
             MediaStore.Audio.Genres.Members.getContentUri("external", pId.toLong())
         } else {
@@ -289,15 +293,38 @@ class AudioFromQuery : ViewModel() {
         withContext(Dispatchers.IO) {
             val songsFrom: ArrayList<MutableMap<String, Any?>> = ArrayList()
 
-            val cursor = resolver.query(pUri, songProjection(), null, null, sortType)
+            // For playlist members the _id column is the member-row ID, not the audio file ID.
+            // We also request audio_id so we can remap _id to the real audio file ID afterwards.
+            val projection: Array<String> = if (isPlaylistQuery) {
+                songProjection() + arrayOf(MediaStore.Audio.Playlists.Members.AUDIO_ID)
+            } else {
+                songProjection()
+            }
+
+            val cursor = resolver.query(pUri, projection, null, null, sortType)
 
             Log.d(TAG, "Cursor count: ${cursor?.count}")
+
+            val audioIdIdx = if (isPlaylistQuery) {
+                cursor?.getColumnIndex(MediaStore.Audio.Playlists.Members.AUDIO_ID) ?: -1
+            } else -1
 
             while (cursor != null && cursor.moveToNext()) {
                 val tempData: MutableMap<String, Any?> = HashMap()
 
                 for (media in cursor.columnNames) {
                     tempData[media] = helper.loadSongItem(media, cursor)
+                }
+
+                // Remap _id → audio_id for playlist members so the stored ID matches
+                // the ID returned by MediaStore.Audio.Media queries (used for playback lookup).
+                if (audioIdIdx >= 0) {
+                    val audioId = if (Build.VERSION.SDK_INT >= 30) {
+                        cursor.getLong(audioIdIdx)
+                    } else {
+                        cursor.getInt(audioIdIdx).toLong()
+                    }
+                    tempData["_id"] = audioId
                 }
 
                 //Get a extra information from audio, e.g: extension, uri, etc..
