@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.5] - 2026-02-24
+
+### Fixed
+- **Android: Playlist songs had wrong IDs** — For playlist member queries, MediaStore returns the member-row `_id`, not the audio file ID. Playback lookup then failed because the stored ID didn't match any `MediaStore.Audio.Media` entry. Fixed by requesting `audio_id` in the projection and remapping `_id` to it after the cursor read.
+
 ## [3.0.4] - 2026-02-20
 
 ### Fixed
