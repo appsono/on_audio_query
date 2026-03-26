@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.6] - 2026-03-27
+
+### Fixed
+- **Android: UTF-8 mojibake in metadata strings** - Song titles, artist names, and album names containing non-ASCII characters (smart quotes, accented letters, em dashes, etc.) were displayed as garbled text (e.g. "Donâ€™t" instead of "Don't"). Some ID3 tag writers store UTF-8 bytes but declare the encoding as Latin-1/CP1252; MediaStore reads them using the declared encoding, producing mojibake. All string fields from cursor queries are now passed through a `fixMojibake` function that detects and reverses the mis-encoding.
+- **Android: Fatal crash "Reply already submitted"** - When audio storage permission was denied, `onMethodCall` sent an error reply but did not `return`, so execution fell through to `methodController.find()` which launched a coroutine that tried to reply a second time on the same `Result` object. Same issue existed in the `scan` method with a null path. Added missing `return` statements after both early replies.
+
+### Changed
+- Updated `on_audio_query_android` to v1.1.7
+
+### Technical Details
+- **Modified**: `QueryHelper.kt` - Added `fixMojibake` companion function (CP1252 re-encode then UTF-8 decode with length/FFFD safety checks). Applied to all 5 string return paths: `loadSongItem`, `loadAlbumItem`, `loadPlaylistItem`, `loadArtistItem`, `loadGenreItem`.
+- **Modified**: `OnAudioQueryPlugin.kt` - Added `return` after `result.error()` in the permission check block and after `result.success(false)` in the `SCAN` null-path check.
+
 ## [3.0.5] - 2026-02-24
 
 ### Fixed
