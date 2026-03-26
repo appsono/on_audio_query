@@ -8,8 +8,45 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import java.io.File
+import java.nio.charset.Charset
 
 class QueryHelper {
+
+    companion object {
+        private val CP1252: Charset = Charset.forName("windows-1252")
+
+        /**
+         * Fixes UTF-8 mojibake in metadata strings.
+         *
+         * Some ID3 tag writers store UTF-8 bytes but mark the encoding as
+         * Latin-1/CP1252. Android's MediaStore reads the bytes using that
+         * declared encoding, producing garbled text like "Donâ€™t" instead
+         * of "Don't".
+         *
+         * This re-encodes the string back to CP1252 bytes and decodes as
+         * UTF-8. If that produces a valid, shorter string it was mojibake.
+         * Otherwise the original is returned unchanged.
+         */
+        fun fixMojibake(input: String?): String? {
+            if (input == null) return null
+
+            return try {
+                val bytes = input.toByteArray(CP1252)
+                val decoded = String(bytes, Charsets.UTF_8)
+
+                // Mojibake always expands: multi-byte UTF-8 sequences become
+                // multiple single-byte CP1252 chars. A valid fix will be
+                // shorter and contain no replacement characters.
+                if (!decoded.contains('\uFFFD') && decoded.length < input.length) {
+                    decoded
+                } else {
+                    input
+                }
+            } catch (_: Exception) {
+                input
+            }
+        }
+    }
     //This method will load some extra information about audio/song
     fun loadSongExtraInfo(
         uri: Uri,
@@ -60,8 +97,8 @@ class QueryHelper {
                 if (value == "0") return false
                 return true
             }
-            // String
-            else -> cursor.getString(cursor.getColumnIndex(itemProperty))
+            // String (fix mojibake from misencoded ID3 tags)
+            else -> fixMojibake(cursor.getString(cursor.getColumnIndex(itemProperty)))
         }
     }
 
@@ -78,7 +115,7 @@ class QueryHelper {
                 }
             }
             "numsongs" -> cursor.getInt(cursor.getColumnIndex(itemProperty))
-            else -> cursor.getString(cursor.getColumnIndex(itemProperty))
+            else -> fixMojibake(cursor.getString(cursor.getColumnIndex(itemProperty)))
         }
     }
 
@@ -88,7 +125,7 @@ class QueryHelper {
             "_id",
             "date_added",
             "date_modified" -> cursor.getLong(cursor.getColumnIndex(itemProperty))
-            else -> cursor.getString(cursor.getColumnIndex(itemProperty))
+            else -> fixMojibake(cursor.getString(cursor.getColumnIndex(itemProperty)))
         }
     }
 
@@ -105,7 +142,7 @@ class QueryHelper {
             }
             "number_of_albums",
             "number_of_tracks" -> cursor.getInt(cursor.getColumnIndex(itemProperty))
-            else -> cursor.getString(cursor.getColumnIndex(itemProperty))
+            else -> fixMojibake(cursor.getString(cursor.getColumnIndex(itemProperty)))
         }
     }
 
@@ -120,7 +157,7 @@ class QueryHelper {
                     cursor.getInt(cursor.getColumnIndex(itemProperty))
                 }
             }
-            else -> cursor.getString(cursor.getColumnIndex(itemProperty))
+            else -> fixMojibake(cursor.getString(cursor.getColumnIndex(itemProperty)))
         }
     }
 
@@ -197,7 +234,7 @@ class QueryHelper {
                 }
             }
         } catch (e: Exception) {
-//            Log.i("on_audio_error", e.toString())
+        //     Log.i("on_audio_error", e.toString())
         }
 
         //

@@ -104,6 +104,7 @@ class OnAudioQueryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 if (sPath == null || sPath.isEmpty()) {
                     Log.w(TAG, "Method 'scan' was called with null or empty 'path'")
                     result.success(false)
+                    return
                 }
 
                 // Scan and return
@@ -138,6 +139,7 @@ class OnAudioQueryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                         "Application doesn't have access to the library",
                         "Call the [permissionsRequest] method or install a external plugin to handle the app permission."
                     )
+                    return
                 }
 
                 methodController.find()
